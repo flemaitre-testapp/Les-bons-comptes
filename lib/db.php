@@ -20,16 +20,13 @@ function db(): PDO
 function migrate(PDO $pdo): void
 {
     $version = (int)$pdo->query('PRAGMA user_version')->fetchColumn();
-    if ($version >= 3) {
+    if ($version >= 4) {
         return;
     }
-    if ($version === 2) {
-        migrate_v3($pdo);
-        return;
-    }
-    if ($version === 1) {
-        migrate_v2($pdo);
-        migrate_v3($pdo);
+    if ($version >= 1) {
+        if ($version < 2) migrate_v2($pdo);
+        if ($version < 3) migrate_v3($pdo);
+        migrate_v4($pdo);
         return;
     }
     $pdo->exec(<<<SQL
@@ -130,6 +127,7 @@ PRAGMA user_version = 1;
 SQL);
     migrate_v2($pdo);
     migrate_v3($pdo);
+    migrate_v4($pdo);
 }
 
 /** v2 : validation séparée par chaque partie (case Florian / case Julie). */
@@ -176,4 +174,27 @@ function setting(string $k, ?string $default = null): ?string
 function set_setting(string $k, string $v): void
 {
     q('INSERT INTO settings(k, v) VALUES(?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v', [$k, $v]);
+}
+
+/** v4 : propositions d'ajustement du membre, à valider par l'administrateur. */
+function migrate_v4(PDO $pdo): void
+{
+    $pdo->exec(<<<SQL
+CREATE TABLE IF NOT EXISTS proposals (
+    id INTEGER PRIMARY KEY,
+    entry_id INTEGER NOT NULL REFERENCES entries(id),
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+    part_a_bp INTEGER NOT NULL CHECK (part_a_bp BETWEEN 0 AND 10000),
+    future INTEGER NOT NULL DEFAULT 0,
+    reason TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'en_attente' CHECK (status IN ('en_attente','acceptee','refusee','retiree')),
+    decided_by INTEGER REFERENCES users(id),
+    decided_at TEXT,
+    decision_note TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_proposals_entry ON proposals(entry_id, status);
+PRAGMA user_version = 4;
+SQL);
 }

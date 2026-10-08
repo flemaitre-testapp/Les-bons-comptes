@@ -133,7 +133,7 @@ layout_start('Opération #' . $id, 'entries');
   <?php if (can_cancel($e, $me)): ?>
     <details class="danger">
       <summary>Corriger ou annuler</summary>
-      <?php if ($isDep): ?>
+      <?php if ($isDep && is_admin()): ?>
         <p><a class="btn btn-ghost" href="<?= url('new', ['replace' => $id]) ?>">Corriger (crée une nouvelle version)</a></p>
       <?php endif; ?>
       <form method="post" class="form" data-confirm="Annuler cette opération ? Elle restera visible, barrée.">

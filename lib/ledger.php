@@ -396,10 +396,53 @@ function generate_recurring(string $period): int
 }
 
 /** Peut-on ajuster cette ligne ? Charges mensuelles : les deux. Sinon : auteur ou admin. */
+/** L'admin ajuste directement ; l'autre partie peut proposer un ajustement sur toute dépense. */
 function can_adjust(array $e, array $u): bool
 {
-    if ($e['cancelled'] || $e['kind'] !== 'depense') return false;
-    return $e['recurring_id'] ? true : can_cancel($e, $u);
+    return !$e['cancelled'] && $e['kind'] === 'depense';
+}
+
+function pending_proposal(int $entryId): ?array
+{
+    $p = q("SELECT * FROM proposals WHERE entry_id = ? AND status = 'en_attente' ORDER BY id DESC LIMIT 1", [$entryId])->fetch();
+    return $p ?: null;
+}
+
+function propose_adjust(array $e, int $uid, int $amount, int $bp, string $reason, bool $future): void
+{
+    q("UPDATE proposals SET status = 'retiree', decided_by = ?, decided_at = ? WHERE entry_id = ? AND status = 'en_attente'", [$uid, now(), $e['id']]);
+    q('INSERT INTO proposals(entry_id, user_id, amount_cents, part_a_bp, future, reason, created_at) VALUES(?, ?, ?, ?, ?, ?, ?)',
+        [$e['id'], $uid, $amount, $bp, $future ? 1 : 0, $reason, now()]);
+    $pid = (int)db()->lastInsertId();
+    q('INSERT INTO comments(entry_id, user_id, body, created_at) VALUES(?, ?, ?, ?)',
+        [$e['id'], $uid, 'Propose ' . money($amount) . ' · ' . split_label(['part_a_bp' => $bp, 'fair_a_bp' => null]) . ' : ' . $reason, now()]);
+    audit('proposal.create', 'entry', (int)$e['id'], [
+        'proposition' => $pid, 'libelle' => $e['label'],
+        'avant' => money((int)$e['amount_cents']) . ', ' . split_label($e),
+        'propose' => money($amount) . ', ' . split_label(['part_a_bp' => $bp, 'fair_a_bp' => null]) . ($future ? ' (et mois suivants)' : ''),
+        'motif' => $reason,
+    ]);
+}
+
+/** L'admin accepte : la ligne est ajustée et considérée validée par les deux. Retourne l'id de la nouvelle ligne. */
+function accept_proposal(array $p, array $e): int
+{
+    $reason = 'Proposition de ' . user_name((int)$p['user_id']) . ' acceptée : ' . $p['reason'];
+    $id = adjust_entry($e, (int)$p['amount_cents'], (int)$p['part_a_bp'], $reason, (bool)$p['future']);
+    $col = ok_col((int)$p['user_id']);
+    q("UPDATE entries SET $col = 1, {$col}_at = ? WHERE id = ?", [now(), $id]);
+    q("UPDATE entries SET status = 'valide' WHERE id = ? AND ok_a = 1 AND ok_b = 1", [$id]);
+    q("UPDATE proposals SET status = 'acceptee', decided_by = ?, decided_at = ? WHERE id = ?", [$_SESSION['uid'], now(), $p['id']]);
+    audit('proposal.accept', 'entry', (int)$e['id'], ['proposition' => (int)$p['id'], 'nouvelle_ligne' => $id]);
+    return $id;
+}
+
+function refuse_proposal(array $p, string $note): void
+{
+    q("UPDATE proposals SET status = 'refusee', decided_by = ?, decided_at = ?, decision_note = ? WHERE id = ?", [$_SESSION['uid'], now(), $note, $p['id']]);
+    q('INSERT INTO comments(entry_id, user_id, body, created_at) VALUES(?, ?, ?, ?)',
+        [$p['entry_id'], $_SESSION['uid'], 'Proposition refusée : ' . $note, now()]);
+    audit('proposal.refuse', 'entry', (int)$p['entry_id'], ['proposition' => (int)$p['id'], 'motif' => $note]);
 }
 
 /**

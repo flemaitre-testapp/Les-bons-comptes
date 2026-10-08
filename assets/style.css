@@ -339,3 +339,8 @@ details.row-actions[open] { background: var(--bg); border-radius: 10px; padding:
 .pills .pill-pct { width: 6.5rem !important; flex: 0 0 6.5rem !important; min-height: 34px; padding: .3rem .5rem; font-size: .82rem; }
 .lbl-sm { font-size: .82rem; font-weight: 600; }
 .rec-row .pills { flex-basis: 100%; }
+
+.proposal { margin-top: .5rem; padding: .55rem .7rem; border-radius: 10px; background: var(--wait-bg); color: var(--ink); font-size: .84rem; }
+.prop-actions { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin-top: .45rem; }
+.prop-actions .inline-form { margin: 0; flex-wrap: nowrap; }
+.prop-actions .inline-form input { min-height: 34px; padding: .3rem .5rem; font-size: .82rem; flex: 1 1 140px; }

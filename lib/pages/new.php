@@ -7,7 +7,7 @@ $A = $p['A'];
 $B = $p['B'];
 
 $replace = isset($_GET['replace']) ? load_entry((int)$_GET['replace']) : null;
-if ($replace && (!can_cancel($replace, $me) || $replace['kind'] !== 'depense')) {
+if ($replace && (!is_admin() || $replace['cancelled'] || $replace['kind'] !== 'depense')) {
     flash('err', 'Tu ne peux pas corriger cette opération.');
     redirect('entry', ['id' => $replace['id']]);
 }

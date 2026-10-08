@@ -48,13 +48,29 @@ if (is_post()) {
             $amount = parse_money(post('amount'));
             $bp = resolve_split(post('mode'), post('part_a'));
             if (!$amount || $bp === null || $reason === '') {
-                flash('err', 'Pour ajuster : montant, répartition et commentaire obligatoires.');
+                flash('err', 'Montant, répartition et commentaire obligatoires.');
             } elseif ($amount === (int)$e['amount_cents'] && $bp === (int)$e['part_a_bp']) {
                 flash('info', 'Rien n\'a changé.');
-            } else {
+            } elseif (is_admin()) {
                 $anchor = adjust_entry($e, $amount, $bp, $reason, post('future') === '1');
                 flash('ok', 'Ligne ajustée. L\'ancienne version reste visible dans l\'historique.');
+            } else {
+                propose_adjust($e, $uid, $amount, $bp, $reason, post('future') === '1');
+                flash('ok', 'Proposition envoyée. Elle s\'appliquera quand ' . user_name(party_a_id()) . ' l\'aura validée.');
             }
+        } elseif (in_array($action, ['prop_accept', 'prop_refuse'], true) && is_admin() && ($pr = pending_proposal((int)$e['id']))) {
+            if ($action === 'prop_accept') {
+                $anchor = accept_proposal($pr, $e);
+                flash('ok', 'Proposition acceptée, ligne ajustée.');
+            } elseif ($reason === '') {
+                flash('err', 'Indique pourquoi tu refuses.');
+            } else {
+                refuse_proposal($pr, $reason);
+                flash('ok', 'Proposition refusée. Le motif est visible par les deux.');
+            }
+        } elseif ($action === 'prop_withdraw' && ($pr = pending_proposal((int)$e['id'])) && (int)$pr['user_id'] === $uid) {
+            q("UPDATE proposals SET status = 'retiree', decided_by = ?, decided_at = ? WHERE id = ?", [$uid, now(), $pr['id']]);
+            audit('proposal.withdraw', 'entry', (int)$e['id'], ['proposition' => (int)$pr['id']]);
         }
         db()->commit();
     }
@@ -141,6 +157,8 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
   </div>
 </section>
 
+<?php $nbProp = is_admin() ? (int)q("SELECT COUNT(*) FROM proposals p JOIN entries e ON e.id = p.entry_id WHERE p.status = 'en_attente' AND e.cancelled = 0")->fetchColumn() : 0; ?>
+<?php if ($nbProp): ?><div class="flash flash-info"><?= $nbProp ?> proposition(s) d'ajustement de <?= h($nameB) ?> à valider.</div><?php endif; ?>
 <?php if ($todoMe || $otherTodo): ?>
   <div class="flash flash-info">
     <?php if ($todoMe): ?><?= $todoMe ?> ligne(s) à valider par toi ce mois-ci.<?php endif; ?>
@@ -182,6 +200,23 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
           <?php endif; ?>
         </div>
       <?php endif; ?>
+      <?php if ($isDep && ($pr = pending_proposal($id))): ?>
+        <div class="proposal">
+          <div><strong><?= h(user_name((int)$pr['user_id'])) ?> propose</strong> : <?= money((int)$pr['amount_cents']) ?> · <?= h(split_label(['part_a_bp' => (int)$pr['part_a_bp'], 'fair_a_bp' => null])) ?><?= $pr['future'] ? ' · aussi les mois suivants' : '' ?>
+            <?php [$npa, $npb] = split_amount((int)$pr['amount_cents'], (int)$pr['part_a_bp']); ?>
+            <br><span class="muted"><?= h($nameA) ?> <?= money($npa) ?> · <?= h($nameB) ?> <?= money($npb) ?> · « <?= h($pr['reason']) ?> »</span></div>
+          <?php if (is_admin()): ?>
+            <div class="prop-actions">
+              <form method="post" class="ok-form"><?= csrf_field() ?><input type="hidden" name="action" value="prop_accept"><input type="hidden" name="id" value="<?= $id ?>"><button class="ok mine">✓ Accepter</button></form>
+              <form method="post" class="inline-form ok-form"><?= csrf_field() ?><input type="hidden" name="action" value="prop_refuse"><input type="hidden" name="id" value="<?= $id ?>">
+                <input name="reason" maxlength="500" placeholder="Motif du refus" required><button class="ok">Refuser</button></form>
+            </div>
+          <?php elseif ((int)$pr['user_id'] === $uid): ?>
+            <div class="prop-actions"><span class="muted small-txt">En attente de validation par <?= h(user_name(party_a_id())) ?>.</span>
+              <form method="post" class="ok-form"><?= csrf_field() ?><input type="hidden" name="action" value="prop_withdraw"><input type="hidden" name="id" value="<?= $id ?>"><button class="ok">Retirer</button></form></div>
+          <?php endif; ?>
+        </div>
+      <?php endif; ?>
       <?php if ($cs): ?>
         <ul class="mini-comments">
           <?php foreach (array_slice($cs, -3) as $c): ?>
@@ -208,7 +243,7 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
         <?php endif; ?>
       </div>
       <details class="row-actions">
-        <summary>Commenter<?= can_adjust($e, $me) ? ', ajuster' : '' ?><?= $isDep && !$disputed ? ', contester' : '' ?></summary>
+        <summary>Commenter<?= can_adjust($e, $me) ? (is_admin() ? ', ajuster' : ', proposer un ajustement') : '' ?><?= $isDep && !$disputed ? ', contester' : '' ?></summary>
         <form method="post" class="inline-form">
           <?= csrf_field() ?><input type="hidden" name="action" value="comment"><input type="hidden" name="id" value="<?= $id ?>">
           <input name="reason" maxlength="2000" placeholder="Commentaire..." required>
@@ -217,7 +252,8 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
         <?php if (can_adjust($e, $me)): ?>
           <form method="post" class="form adjust">
             <?= csrf_field() ?><input type="hidden" name="action" value="adjust"><input type="hidden" name="id" value="<?= $id ?>">
-            <strong>Ajuster cette ligne</strong>
+            <strong><?= is_admin() ? 'Ajuster cette ligne' : 'Proposer un ajustement' ?></strong>
+            <?php if (!is_admin()): ?><span class="muted small-txt">Ta proposition s'appliquera une fois validée par <?= h(user_name(party_a_id())) ?>.</span><?php endif; ?>
             <div class="row2">
               <label>Montant réel (€) <input name="amount" value="<?= h(number_format($e['amount_cents'] / 100, 2, ',', '')) ?>" inputmode="decimal" required></label>
               <span></span>
@@ -227,7 +263,7 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
             <?= split_chips($cur, $cur === 'custom' ? str_replace('.', ',', (string)($bp / 100)) : '') ?>
             <input name="reason" maxlength="500" placeholder="Pourquoi ? (obligatoire)" required>
             <?php if ($e['recurring_id']): ?><label class="check"><input type="checkbox" name="future" value="1"> Appliquer aussi aux mois suivants</label><?php endif; ?>
-            <button class="btn small">Ajuster</button>
+            <button class="btn small"><?= is_admin() ? 'Ajuster' : 'Envoyer la proposition' ?></button>
           </form>
         <?php endif; ?>
         <?php if ($isDep && !$disputed): ?>
