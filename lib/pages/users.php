@@ -51,7 +51,7 @@ layout_start('Comptes', 'admin');
         <input name="display_name" value="<?= h($u['display_name']) ?>" maxlength="40" required>
         <button class="btn btn-ghost small">Renommer</button>
       </form>
-      <p class="muted">Identifiant : <strong><?= h($u['username']) ?></strong> · <?= $u['role'] === 'admin' ? 'Administrateur' : 'Membre' ?>
+      <p class="muted"><?= $u['role'] === 'admin' ? 'Administrateur' : 'Membre' ?>
         · Dernière connexion : <?= $u['last_login_at'] ? fdate($u['last_login_at'], true) : 'jamais' ?>
         <?= $u['must_change_pw'] ? ' · <em>mot de passe provisoire en attente de changement</em>' : '' ?></p>
       <?php if ((int)$u['id'] !== (int)$me['id']): ?>

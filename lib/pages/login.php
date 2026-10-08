@@ -3,15 +3,14 @@ if (current_user()) {
     redirect('dashboard');
 }
 $error = null;
-$username = post('username');
 if (is_post()) {
     check_csrf();
-    if (login_blocked($username)) {
+    if (login_blocked()) {
         $error = 'Trop de tentatives. Réessaie dans 15 minutes.';
-    } elseif (attempt_login($username, post('password'))) {
+    } elseif (attempt_login(post('password'))) {
         redirect('dashboard');
     } else {
-        $error = 'Identifiant ou mot de passe incorrect.';
+        $error = 'Mot de passe incorrect.';
     }
 }
 layout_start('Connexion');
@@ -22,8 +21,7 @@ layout_start('Connexion');
   <?php if ($error): ?><div class="flash flash-err"><?= h($error) ?></div><?php endif; ?>
   <form method="post" class="form">
     <?= csrf_field() ?>
-    <label>Identifiant <input name="username" value="<?= h($username) ?>" autocomplete="username" autocapitalize="none" required autofocus></label>
-    <label>Mot de passe <input type="password" name="password" autocomplete="current-password" required></label>
+    <label>Mot de passe <input type="password" name="password" autocomplete="current-password" required autofocus></label>
     <button class="btn">Se connecter</button>
   </form>
 </section>

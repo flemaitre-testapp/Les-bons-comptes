@@ -54,23 +54,30 @@ function require_admin(): void
     }
 }
 
-function login_blocked(string $username): bool
+function login_blocked(): bool
 {
     $since = time() - FAIL_WINDOW;
-    $n = (int)q('SELECT COUNT(*) FROM login_attempts WHERE success = 0 AND ts > ? AND (ip = ? OR username = ?)',
-        [$since, client_ip(), mb_strtolower($username)])->fetchColumn();
+    $n = (int)q('SELECT COUNT(*) FROM login_attempts WHERE success = 0 AND ts > ? AND ip = ?',
+        [$since, client_ip()])->fetchColumn();
     return $n >= MAX_FAILS;
 }
 
-function attempt_login(string $username, string $password): bool
+/** Connexion par mot de passe seul : le mot de passe identifie la personne. */
+function attempt_login(string $password): bool
 {
     q('DELETE FROM login_attempts WHERE ts < ?', [time() - 86400 * 30]);
-    $u = q('SELECT * FROM users WHERE username = ? AND active = 1', [$username])->fetch();
-    $ok = $u && password_verify($password, $u['password_hash']);
+    $u = null;
+    foreach (q('SELECT * FROM users WHERE active = 1')->fetchAll() as $row) {
+        if (password_verify($password, $row['password_hash'])) {
+            $u = $row;
+            break;
+        }
+    }
+    $ok = $u !== null;
     q('INSERT INTO login_attempts(ip, username, ts, success) VALUES(?, ?, ?, ?)',
-        [client_ip(), mb_strtolower($username), time(), $ok ? 1 : 0]);
+        [client_ip(), $u['username'] ?? '', time(), $ok ? 1 : 0]);
     if (!$ok) {
-        audit('login.fail', 'user', $u ? (int)$u['id'] : null, ['identifiant' => mb_substr($username, 0, 60)]);
+        audit('login.fail');
         return false;
     }
     if (password_needs_rehash($u['password_hash'], PASSWORD_DEFAULT)) {
@@ -93,6 +100,15 @@ function set_password(int $uid, string $password, bool $mustChange = false): voi
     if (($_SESSION['uid'] ?? null) === $uid) {
         $_SESSION['pwv'] = substr($hash, -16);
     }
+}
+
+/** Les mots de passe doivent rester différents puisqu'ils servent d'identifiant. */
+function password_taken(string $pw, int $exceptUid): bool
+{
+    foreach (q('SELECT password_hash FROM users WHERE id <> ?', [$exceptUid]) as $r) {
+        if (password_verify($pw, $r['password_hash'])) return true;
+    }
+    return false;
 }
 
 function password_problem(string $pw, string $confirm): ?string
