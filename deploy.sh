@@ -3,7 +3,7 @@
 # Copie l'appli dans public_html et garde les données hors du dossier web.
 set -e
 
-APP_DIR="$HOME/public_html/budget"     # dossier web de l'appli (modifiable)
+APP_DIR="$HOME/ocitodesign.fr/budget"  # = https://ocitodesign.fr/budget
 DATA_DIR="$HOME/budget-data"           # base SQLite + justificatifs, hors web
 
 SRC="$(cd "$(dirname "$0")" && pwd)"

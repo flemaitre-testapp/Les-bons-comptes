@@ -39,7 +39,7 @@ cPanel > **Git Version Control** > Create :
 Dans le dépôt cloné : onglet **Pull or Deploy** > **Deploy HEAD Commit**.
 
 Le script `deploy.sh` :
-- copie l'appli dans `~/public_html/budget`
+- copie l'appli dans `~/ocitodesign.fr/budget` (racine du domaine ocitodesign.fr)
 - crée `~/budget-data` (base + justificatifs), **hors du dossier web**
 - crée `config.local.php` une seule fois
 
