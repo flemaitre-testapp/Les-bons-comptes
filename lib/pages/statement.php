@@ -34,11 +34,11 @@ layout_start('Relevé', 'statement');
   <table class="tbl sum">
     <thead><tr><th></th><th class="r"><?= h($A['display_name']) ?></th><th class="r"><?= h($B['display_name']) ?></th></tr></thead>
     <tbody>
-      <tr><td>A payé</td><td class="r"><?= money($per['out'][$a]) ?></td><td class="r"><?= money($per['out'][$b]) ?></td></tr>
+      <tr><td>A avancé (dépenses + remboursements nets)</td><td class="r"><?= money($per['out'][$a]) ?></td><td class="r"><?= money($per['out'][$b]) ?></td></tr>
       <tr><td>Part convenue</td><td class="r"><?= money($per['share'][$a]) ?></td><td class="r"><?= money($per['share'][$b]) ?></td></tr>
       <?php if ($ib !== null): ?>
       <tr><td>Part selon les revenus (<?= pct($ib) ?> / <?= pct(10000 - $ib) ?>)</td><td class="r"><?= money($per['fair'][$a]) ?></td><td class="r"><?= money($per['fair'][$b]) ?></td></tr>
-      <tr class="em"><td>Écart avec la part selon les revenus</td><td class="r"><?= money($per['over'][$a], true) ?></td><td class="r"><?= money($per['over'][$b], true) ?></td></tr>
+      <tr class="em"><td>Pris en charge en plus (+) ou en moins (-) que la part selon les revenus</td><td class="r"><?= money($per['over'][$a], true) ?></td><td class="r"><?= money($per['over'][$b], true) ?></td></tr>
       <?php endif; ?>
     </tbody>
   </table>

@@ -14,6 +14,7 @@ if (!in_array($page, $routes, true)) {
 }
 
 seed_if_empty();
+upgrade_data();
 if (!has_users() && $page !== 'setup') {
     redirect('setup');
 }

@@ -151,3 +151,46 @@ function seed_if_empty(): void
     ]);
     db()->commit();
 }
+
+/**
+ * Mise à niveau des données (une seule fois) : règle de base 40/60 et
+ * charges mensuelles reprises du tableau Excel (payées par le second compte).
+ */
+function upgrade_data(): void
+{
+    if (!has_users() || (int)setting('data_v', '1') >= 2) {
+        return;
+    }
+    $B = (int)parties()['B']['id'];
+    $cat = fn(string $n) => q('SELECT id FROM categories WHERE name = ?', [$n])->fetchColumn() ?: null;
+    db()->beginTransaction();
+    if (setting('base_part_a_bp') === null) {
+        set_setting('base_part_a_bp', '4000');
+    }
+    set_setting('default_mode', 'base');
+    if (!(int)q('SELECT COUNT(*) FROM recurring')->fetchColumn()) {
+        $rows = [
+            // libellé, montant total (€ cents), part de A, catégorie
+            ['Prêt conso (baptême Aurore)', 17500, 4000, 'Logement & prêts'],
+            ['Assurance habitation', 9445, 4000, 'Assurances'],
+            ['Reste à charge nounou', 10000, 4000, 'Garde & nounou'],
+            ['Épargne filles', 6000, 4000, 'Épargne enfants'],
+            ['Activité Rose', 2700, 4000, 'Activités enfants'],
+            ['Activité Louise', 4500, 4000, 'Activités enfants'],
+            ['Taxe foncière', 15600, 4000, 'Impôts & taxes'],
+            ['Deezer', 999, 4000, 'Abonnements'],
+            ['Assurance GAV', 3332, 4000, 'Assurances'],
+            ['Deezer Nico', 999, 10000, 'Abonnements'],
+            ['Moto', 2929, 10000, 'Transport'],
+            ['Assurance emprunteur', 1848, 10000, 'Assurances'],
+        ];
+        foreach ($rows as [$label, $amt, $bp, $c]) {
+            q("INSERT INTO recurring(label, category_id, amount_cents, paid_by, mode, part_a_bp, day_of_month, created_at) VALUES(?, ?, ?, ?, 'custom', ?, 1, ?)",
+                [$label, $cat($c), $amt, $B, $bp, now()]);
+        }
+        audit('recurring.create', null, null, ['source' => 'reprise du tableau Excel', 'nombre' => count($rows)]);
+    }
+    set_setting('data_v', '2');
+    audit('settings.update', null, null, ['regle_de_base' => rule_label(base_bp())]);
+    db()->commit();
+}

@@ -9,16 +9,16 @@ if (is_post()) {
     if ($action === 'incomes') {
         $a = parse_money(post('inc_a'));
         $b = parse_money(post('inc_b'));
-        $mode = in_array(post('default_mode'), ['half', 'income'], true) ? post('default_mode') : 'half';
-        if ($a === null || $b === null || $a + $b === 0) {
-            flash('err', 'Revenus invalides.');
+        $base = parse_pct(post('base'));
+        if ($a === null || $b === null || $a + $b === 0 || $base === null) {
+            flash('err', 'Valeurs invalides.');
         } else {
             $oldA = (int)setting('income_a', '0');
             $oldB = (int)setting('income_b', '0');
-            $oldMode = setting('default_mode', 'half');
+            $oldBase = base_bp();
             set_setting('income_a', (string)$a);
             set_setting('income_b', (string)$b);
-            set_setting('default_mode', $mode);
+            set_setting('base_part_a_bp', (string)$base);
             if ($oldA !== $a || $oldB !== $b) {
                 audit('income.update', null, null, [
                     $A['display_name'] => money($oldA) . ' → ' . money($a),
@@ -26,8 +26,8 @@ if (is_post()) {
                     'nouvelle_part_selon_revenus' => $A['display_name'] . ' ' . pct(income_bp()) . ', ' . $B['display_name'] . ' ' . pct(10000 - income_bp()),
                 ]);
             }
-            if ($oldMode !== $mode) {
-                audit('settings.update', null, null, ['repartition_par_defaut' => $mode === 'half' ? '50/50' : 'selon revenus']);
+            if ($oldBase !== $base) {
+                audit('settings.update', null, null, ['regle_de_base' => rule_label($oldBase) . ' → ' . rule_label($base)]);
             }
             flash('ok', 'Réglages enregistrés. Les opérations déjà saisies gardent leur calcul d\'origine.');
         }
@@ -63,14 +63,13 @@ if (is_post()) {
 $incA = (int)setting('income_a', '0');
 $incB = (int)setting('income_b', '0');
 $ib = income_bp();
-$mode = setting('default_mode', 'half');
 $fmt = fn(int $c) => str_replace('.', ',', rtrim(rtrim(number_format($c / 100, 2, '.', ''), '0'), '.'));
 layout_start('Admin', 'admin');
 ?>
 <h1>Administration</h1>
 <?php admin_tabs('settings'); ?>
 <section class="card">
-  <h2>Revenus et répartition</h2>
+  <h2>Règle de répartition et revenus</h2>
   <form method="post" class="form">
     <?= csrf_field() ?><input type="hidden" name="action" value="incomes">
     <div class="row2">
@@ -80,13 +79,8 @@ layout_start('Admin', 'admin');
     <?php if ($ib !== null): ?>
       <p class="hint">Part selon revenus : <strong><?= h($A['display_name']) ?> <?= pct($ib) ?></strong>, <strong><?= h($B['display_name']) ?> <?= pct(10000 - $ib) ?></strong>.</p>
     <?php endif; ?>
-    <label>Répartition proposée par défaut
-      <select name="default_mode">
-        <option value="half" <?= $mode === 'half' ? 'selected' : '' ?>>50 / 50</option>
-        <option value="income" <?= $mode === 'income' ? 'selected' : '' ?>>Selon revenus</option>
-      </select>
-    </label>
-    <p class="hint">Quelle que soit la répartition choisie, l'appli calcule toujours en parallèle la part de chacun selon les revenus, pour montrer qui contribue plus que sa part. Un changement de revenus ne modifie pas les opérations déjà saisies et est inscrit au journal.</p>
+    <label>Règle de base : part de <?= h($A['display_name']) ?> (%) <input name="base" value="<?= h(str_replace('.', ',', (string)(base_bp() / 100))) ?>" inputmode="decimal" required></label>
+    <p class="hint">Règle actuelle : <?= h($A['display_name']) ?> <?= pct(base_bp()) ?>, <?= h($B['display_name']) ?> <?= pct(10000 - base_bp()) ?>. Proposée par défaut pour chaque dépense. L'appli calcule en parallèle la part de chacun selon les revenus. Un changement ne modifie pas les dépenses déjà saisies et est inscrit au journal.</p>
     <button class="btn small">Enregistrer</button>
   </form>
 </section>

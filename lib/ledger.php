@@ -77,6 +77,10 @@ function balance(string $mode = 'all', ?string $until = null, ?string $from = nu
             $r['share'][$B] += $b;
             $r['total'] += $amt;
             $fairBp = $e['fair_a_bp'] !== null ? (int)$e['fair_a_bp'] : $incomeBp;
+            // Une dépense perso reste à 100 % à son bénéficiaire, revenus ou pas
+            if (in_array((int)$e['part_a_bp'], [0, 10000], true)) {
+                $fairBp = (int)$e['part_a_bp'];
+            }
             if ($fairBp !== null) {
                 [$fa, $fb] = split_amount($amt, $fairBp);
                 $r['fair'][$A] += $fa;
@@ -95,7 +99,8 @@ function balance(string $mode = 'all', ?string $until = null, ?string $from = nu
     // Ce que chacun a réellement sorti de sa poche, et l'écart avec sa part selon les revenus
     foreach ([$A, $B] as $id) {
         $r['out'][$id] = $r['paid'][$id] + $r['sent'][$id] - $r['received'][$id];
-        $r['over'][$id] = $r['out'][$id] - $r['fair'][$id];
+        // Écart entre la part convenue et la part qu'imposeraient les revenus
+        $r['over'][$id] = $r['share'][$id] - $r['fair'][$id];
     }
     if ($net[$A] > 0) {
         $r['debtor'] = $B; $r['creditor'] = $A; $r['amount'] = $net[$A];
@@ -120,15 +125,36 @@ function income_of(int $uid): int
     return (int)setting($uid === party_a_id() ? 'income_a' : 'income_b', '0');
 }
 
-/** Libellé court d'une répartition : "50/50", "Selon revenus", "Florian 70 %". */
+/** Règle de base convenue : part de A (basis points). */
+function base_bp(): int
+{
+    return (int)setting('base_part_a_bp', '4000');
+}
+
+function rule_label(int $bp): string
+{
+    return rtrim(rtrim(number_format($bp / 100, 2, ',', ''), '0'), ',') . '/' . rtrim(rtrim(number_format((10000 - $bp) / 100, 2, ',', ''), '0'), ',');
+}
+
+/** Libellé court d'une répartition : "Règle 40/60", "50/50", "Perso Florian"... */
 function split_label(array $e): string
 {
     $bp = (int)$e['part_a_bp'];
+    if ($bp === 10000) return 'Perso ' . user_name(party_a_id());
+    if ($bp === 0) return 'Perso ' . user_name((int)parties()['B']['id']);
+    if ($bp === base_bp()) return 'Règle ' . rule_label($bp);
     if ($bp === 5000) return '50/50';
     if ($e['fair_a_bp'] !== null && $bp === (int)$e['fair_a_bp']) return 'Selon revenus';
-    if ($bp === 10000) return '100 % ' . user_name(party_a_id());
-    if ($bp === 0) return '100 % ' . user_name((int)parties()['B']['id']);
     return user_name(party_a_id()) . ' ' . pct($bp);
+}
+
+/** Famille de couleur d'une opération : perso, mensuel commun, ponctuel commun, remboursement. */
+function entry_tone(array $e): string
+{
+    if ($e['kind'] !== 'depense') return 'remb';
+    $bp = (int)$e['part_a_bp'];
+    if ($bp === 10000 || $bp === 0) return 'perso';
+    return $e['recurring_id'] ? 'mensuel' : 'ponctuel';
 }
 
 /** Phrase factuelle sur l'écart entre ce que chacun a payé et sa part selon les revenus. */
@@ -137,9 +163,9 @@ function fairness_sentence(array $b): ?string
     $A = party_a_id();
     if (income_bp() === null || !$b['total']) return null;
     $over = $b['over'][$A];
-    if (abs($over) < 100) return 'Chacun a contribué conformément à sa part selon les revenus.';
+    if (abs($over) < 100) return 'La règle convenue correspond à la part de chacun selon les revenus.';
     $who = $over > 0 ? $A : (int)parties()['B']['id'];
-    return user_name($who) . ' a contribué ' . money(abs($over)) . ' de plus que sa part selon les revenus.';
+    return 'Avec la règle convenue, ' . user_name($who) . ' prend en charge ' . money(abs($over)) . ' de plus que sa part selon les revenus.';
 }
 
 function balance_sentence(array $b): string
@@ -227,28 +253,33 @@ function status_badge(array $e): string
 function resolve_split(string $mode, string $custom): ?int
 {
     return match ($mode) {
+        'base' => base_bp(),
         'half' => 5000,
+        'perso_a' => 10000,
+        'perso_b' => 0,
         'income' => income_bp(),
         'custom' => parse_pct($custom),
         default => null,
     };
 }
 
-/** Bloc de formulaire "Répartition" (50/50, selon revenus, autre). */
+/** Bloc de formulaire "Répartition". */
 function split_fields(string $mode, string $custom): string
 {
     $A = user_name(party_a_id());
     $B = user_name((int)parties()['B']['id']);
-    $ib = income_bp();
-    $opts = ['half' => '50 / 50'];
-    if ($ib !== null) {
-        $opts['income'] = 'Selon revenus (' . $A . ' ' . pct($ib) . ', ' . $B . ' ' . pct(10000 - $ib) . ')';
-    }
-    $opts['custom'] = 'Autre';
+    $base = base_bp();
+    $opts = [
+        'base' => ['Règle de base : ' . $A . ' ' . pct($base) . ', ' . $B . ' ' . pct(10000 - $base), $base / 100],
+        'half' => ['50 / 50', 50],
+        'perso_a' => ['Dépense perso de ' . $A . ' (100 % ' . $A . ')', 100],
+        'perso_b' => ['Dépense perso de ' . $B . ' (100 % ' . $B . ')', 0],
+        'custom' => ['Autre', ''],
+    ];
     $html = '<div class="field"><span class="lbl">Répartition</span><div class="seg seg-col">';
-    foreach ($opts as $k => $l) {
+    foreach ($opts as $k => [$l, $bp]) {
         $html .= '<label><input type="radio" name="mode" value="' . $k . '"' . ($mode === $k ? ' checked' : '')
-            . ' data-bp="' . ($k === 'half' ? 50 : ($k === 'income' ? $ib / 100 : '')) . '"><span>' . h($l) . '</span></label>';
+            . ' data-bp="' . $bp . '"><span>' . h($l) . '</span></label>';
     }
     $html .= '</div><label class="inline custom-pct"' . ($mode === 'custom' ? '' : ' hidden') . '>Part de ' . h($A)
         . ' (%) <input name="part_a" id="part_a" value="' . h($custom) . '" inputmode="decimal"></label>'
@@ -259,9 +290,13 @@ function split_fields(string $mode, string $custom): string
 /** Retrouve le mode d'une répartition existante. */
 function split_mode_of(int $bp, ?int $fairBp): string
 {
-    if ($bp === 5000) return 'half';
-    if ($fairBp !== null && $bp === $fairBp && $bp === income_bp()) return 'income';
-    return 'custom';
+    return match (true) {
+        $bp === base_bp() => 'base',
+        $bp === 5000 => 'half',
+        $bp === 10000 => 'perso_a',
+        $bp === 0 => 'perso_b',
+        default => 'custom',
+    };
 }
 
 function rec_label(string $mode, int $bp): string
@@ -269,7 +304,7 @@ function rec_label(string $mode, int $bp): string
     return match ($mode) {
         'half' => '50/50',
         'income' => 'selon revenus',
-        default => user_name(party_a_id()) . ' ' . pct($bp),
+        default => split_label(['part_a_bp' => $bp, 'fair_a_bp' => null]),
     };
 }
 
@@ -280,4 +315,30 @@ function rec_bp(array $r): int
         'income' => income_bp() ?? 5000,
         default => (int)$r['part_a_bp'],
     };
+}
+
+/** Ajoute les charges mensuelles d'un mois (YYYY-MM) pas encore saisies. Retourne le nombre ajouté. */
+function generate_recurring(string $period): int
+{
+    $todo = pending_recurring($period);
+    if (!$todo) return 0;
+    db()->beginTransaction();
+    foreach ($todo as $r) {
+        $day = min((int)$r['day_of_month'], (int)date('t', strtotime($period . '-01')));
+        create_entry([
+            'kind' => 'depense',
+            'op_date' => sprintf('%s-%02d', $period, $day),
+            'label' => $r['label'],
+            'category_id' => $r['category_id'],
+            'amount_cents' => (int)$r['amount_cents'],
+            'paid_by' => (int)$r['paid_by'],
+            'part_a_bp' => rec_bp($r),
+            'notes' => 'Charge mensuelle ' . month_label($period),
+            'recurring_id' => (int)$r['id'],
+            'period' => $period,
+        ]);
+    }
+    audit('recurring.generate', null, null, ['mois' => month_label($period), 'nombre' => count($todo)]);
+    db()->commit();
+    return count($todo);
 }

@@ -18,7 +18,7 @@ $f = [
     'amount' => $replace ? number_format($replace['amount_cents'] / 100, 2, ',', '') : '',
     'category_id' => (string)($replace['category_id'] ?? ''),
     'paid_by' => (string)($replace['paid_by'] ?? $me['id']),
-    'mode' => $replace ? split_mode_of((int)$replace['part_a_bp'], $replace['fair_a_bp'] === null ? null : (int)$replace['fair_a_bp']) : setting('default_mode', 'half'),
+    'mode' => $replace ? split_mode_of((int)$replace['part_a_bp'], $replace['fair_a_bp'] === null ? null : (int)$replace['fair_a_bp']) : setting('default_mode', 'base'),
     'part_a' => $replace ? str_replace('.', ',', (string)($replace['part_a_bp'] / 100)) : '',
     'notes' => $replace['notes'] ?? '',
     'reason' => '',

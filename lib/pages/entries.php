@@ -50,7 +50,7 @@ $months = q('SELECT DISTINCT substr(op_date, 1, 7) m FROM entries ORDER BY m DES
 layout_start('Opérations', 'entries');
 ?>
 <div class="page-head">
-  <h1>Opérations</h1>
+  <h1>Dépenses</h1>
   <a class="btn btn-ghost small" href="<?= url('export', array_filter($fl)) ?>">Export CSV</a>
 </div>
 <form class="filters" method="get">
@@ -58,23 +58,12 @@ layout_start('Opérations', 'entries');
   <select name="month"><option value="">Tous les mois</option>
     <?php foreach ($months as $m): ?><option value="<?= h($m) ?>" <?= $fl['month'] === $m ? 'selected' : '' ?>><?= h(ucfirst(month_label($m))) ?></option><?php endforeach; ?>
   </select>
-  <select name="cat"><option value="">Toutes catégories</option>
-    <option value="remb" <?= $fl['cat'] === 'remb' ? 'selected' : '' ?>>Remboursements</option>
-    <?php foreach (categories(false) as $c): ?><option value="<?= (int)$c['id'] ?>" <?= $fl['cat'] === (string)$c['id'] ? 'selected' : '' ?>><?= h($c['name']) ?></option><?php endforeach; ?>
-  </select>
-  <select name="who"><option value="">Payé par tous</option>
-    <?php foreach ($p as $u): ?><option value="<?= (int)$u['id'] ?>" <?= $fl['who'] === (string)$u['id'] ? 'selected' : '' ?>><?= h($u['display_name']) ?></option><?php endforeach; ?>
-  </select>
-  <select name="status"><option value="">Tous statuts</option>
-    <option value="en_attente" <?= $fl['status'] === 'en_attente' ? 'selected' : '' ?>>À valider</option>
-    <option value="valide" <?= $fl['status'] === 'valide' ? 'selected' : '' ?>>Validées</option>
-    <option value="conteste" <?= $fl['status'] === 'conteste' ? 'selected' : '' ?>>Contestées</option>
-  </select>
   <input name="q" value="<?= h($fl['q']) ?>" placeholder="Rechercher...">
   <label class="check"><input type="checkbox" name="show_cancelled" value="1" <?= $fl['show_cancelled'] === '1' ? 'checked' : '' ?>> Afficher les annulées</label>
   <button class="btn small">Filtrer</button>
 </form>
 <p class="totals"><?= count($rows) ?> opération(s) · Dépenses : <strong><?= money($totDep) ?></strong> · Remboursements : <strong><?= money($totRemb) ?></strong></p>
+<?= legend() ?>
 <section class="card flush">
   <?php if ($rows): ?>
     <div class="list"><?php foreach ($rows as $e) echo entry_row($e); ?></div>

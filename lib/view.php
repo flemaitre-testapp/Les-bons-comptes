@@ -26,12 +26,10 @@ function layout_start(string $title, string $active = ''): void
         'dashboard' => 'Accueil',
         'entries' => 'Dépenses',
         'statement' => 'Relevé',
-        'audit' => 'Journal',
     ];
     if ($u['role'] === 'admin') {
         $links['admin'] = 'Admin';
     }
-    $links['account'] = 'Mon compte';
     foreach ($links as $p => $label) {
         $target = $p === 'admin' ? url('settings') : url($p);
         echo '<a href="' . $target . '"' . ($active === $p ? ' class="on"' : '') . '>' . h($label) . '</a>';
@@ -54,7 +52,7 @@ function layout_end(): void
 </main>
 <?php if ($u): ?>
 <a class="fab" href="<?= url('new') ?>" aria-label="Ajouter une dépense">+</a>
-<footer class="foot">Connecté·e : <?= h($u['display_name']) ?> · Toutes les actions sont tracées dans le journal, visible par les deux parties.</footer>
+<footer class="foot">Connecté·e : <?= h($u['display_name']) ?> · <a href="<?= url('account') ?>">Mon compte</a> · <a href="<?= url('audit') ?>">Journal</a><br>Toutes les actions sont tracées dans le journal, visible par les deux.</footer>
 <?php endif; ?>
 <script src="assets/app.js?v=<?= (string)@filemtime(APP_ROOT . '/assets/app.js') ?>"></script>
 </body>
@@ -64,7 +62,7 @@ function layout_end(): void
 
 function admin_tabs(string $active): void
 {
-    $tabs = ['settings' => 'Réglages & catégories', 'recurring' => 'Charges récurrentes', 'users' => 'Comptes'];
+    $tabs = ['settings' => 'Réglages & catégories', 'recurring' => 'Charges mensuelles', 'users' => 'Comptes'];
     echo '<div class="tabs">';
     foreach ($tabs as $p => $l) {
         echo '<a href="' . url($p) . '"' . ($p === $active ? ' class="on"' : '') . '>' . h($l) . '</a>';
@@ -83,10 +81,18 @@ function entry_row(array $e): string
         $meta .= ' · ' . h(split_label($e));
     }
     $cat = $isDep ? '' : 'Remboursement';
-    return '<a class="row' . ($e['cancelled'] ? ' cancelled' : '') . '" href="' . url('entry', ['id' => $e['id']]) . '">'
+    return '<a class="row tone-row tone-' . entry_tone($e) . ($e['cancelled'] ? ' cancelled' : '') . '" href="' . url('entry', ['id' => $e['id']]) . '">'
         . '<span class="row-main"><span class="row-title">' . h($e['label'])
         . ($e['receipt'] ? ' <span class="clip" title="Justificatif joint">📎</span>' : '') . '</span>'
         . '<span class="row-meta">' . $meta . ($cat ? ' · ' . h($cat) : '') . '</span></span>'
         . '<span class="row-side"><span class="amt' . ($isDep ? '' : ' amt-transfer') . '">' . money((int)$e['amount_cents']) . '</span>'
         . status_badge($e) . '</span></a>';
+}
+
+function legend(): string
+{
+    return '<p class="legend"><span class="tone tone-mensuel">Charge mensuelle</span>'
+        . '<span class="tone tone-ponctuel">Dépense ponctuelle</span>'
+        . '<span class="tone tone-perso">Dépense perso</span>'
+        . '<span class="tone tone-remb">Remboursement</span></p>';
 }
