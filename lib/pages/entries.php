@@ -34,6 +34,9 @@ if ($fl['q'] !== '') {
     $args[] = '%' . $fl['q'] . '%';
     $args[] = '%' . $fl['q'] . '%';
 }
+if (!empty($_GET['todo'])) {
+    $where[] = ok_col((int)current_user()['id']) . ' = 0';
+}
 if ($fl['show_cancelled'] !== '1') {
     $where[] = 'cancelled = 0';
 }

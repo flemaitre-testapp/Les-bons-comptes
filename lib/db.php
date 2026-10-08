@@ -20,7 +20,11 @@ function db(): PDO
 function migrate(PDO $pdo): void
 {
     $version = (int)$pdo->query('PRAGMA user_version')->fetchColumn();
-    if ($version >= 1) {
+    if ($version >= 2) {
+        return;
+    }
+    if ($version === 1) {
+        migrate_v2($pdo);
         return;
     }
     $pdo->exec(<<<SQL
@@ -119,6 +123,26 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 PRAGMA user_version = 1;
 SQL);
+    migrate_v2($pdo);
+}
+
+/** v2 : validation séparée par chaque partie (case Florian / case Julie). */
+function migrate_v2(PDO $pdo): void
+{
+    $pdo->exec('ALTER TABLE entries ADD COLUMN ok_a INTEGER NOT NULL DEFAULT 0');
+    $pdo->exec('ALTER TABLE entries ADD COLUMN ok_a_at TEXT');
+    $pdo->exec('ALTER TABLE entries ADD COLUMN ok_b INTEGER NOT NULL DEFAULT 0');
+    $pdo->exec('ALTER TABLE entries ADD COLUMN ok_b_at TEXT');
+    // Reprise de l'existant : "validée" = validée par les deux, sinon validée par celui qui l'a saisie
+    $a = $pdo->query("SELECT id FROM users ORDER BY CASE role WHEN 'admin' THEN 0 ELSE 1 END, id LIMIT 1")->fetchColumn();
+    if ($a) {
+        $pdo->exec("UPDATE entries SET ok_a = 1, ok_a_at = COALESCE(status_at, created_at), ok_b = 1, ok_b_at = COALESCE(status_at, created_at) WHERE status = 'valide'");
+        $st = $pdo->prepare("UPDATE entries SET ok_a = 1, ok_a_at = created_at WHERE status <> 'valide' AND created_by = ? AND recurring_id IS NULL");
+        $st->execute([$a]);
+        $st = $pdo->prepare("UPDATE entries SET ok_b = 1, ok_b_at = created_at WHERE status <> 'valide' AND created_by <> ? AND recurring_id IS NULL");
+        $st->execute([$a]);
+    }
+    $pdo->exec('PRAGMA user_version = 2');
 }
 
 function q(string $sql, array $params = []): PDOStatement

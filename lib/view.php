@@ -23,8 +23,8 @@ function layout_start(string $title, string $active = ''): void
   <nav>
     <?php
     $links = [
-        'dashboard' => 'Accueil',
-        'entries' => 'Dépenses',
+        'dashboard' => 'Mois',
+        'entries' => 'Recherche',
         'statement' => 'Relevé',
     ];
     if ($u['role'] === 'admin') {

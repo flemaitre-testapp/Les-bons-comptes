@@ -6,7 +6,8 @@ if (!$e) {
     redirect('entries');
 }
 $id = (int)$e['id'];
-$isValidator = validator_of($e) === (int)$me['id'];
+$isValidator = true; // chaque partie valide (ou conteste) pour elle-même
+$myOk = (bool)$e[ok_col((int)$me['id'])];
 
 if (is_post()) {
     check_csrf();
@@ -21,20 +22,24 @@ if (is_post()) {
         q('INSERT INTO comments(entry_id, user_id, body, created_at) VALUES(?, ?, ?, ?)', [$id, $me['id'], $comment, now()]);
         audit('entry.comment', 'entry', $id, ['texte' => $comment]);
         flash('ok', 'Commentaire ajouté.');
-    } elseif ($action === 'validate' && $isValidator && !$e['cancelled'] && $e['status'] !== 'valide') {
-        q("UPDATE entries SET status = 'valide', status_by = ?, status_at = ? WHERE id = ?", [$me['id'], now(), $id]);
+    } elseif (($action === 'validate' || $action === 'unvalidate') && !$e['cancelled']) {
+        if ($action === 'validate' && $e['status'] === 'conteste') {
+            q("UPDATE entries SET status = 'en_attente' WHERE id = ?", [$id]);
+            $e['status'] = 'en_attente';
+        }
+        set_ok($e, (int)$me['id'], $action === 'validate');
         if ($comment !== '') {
             q('INSERT INTO comments(entry_id, user_id, body, created_at) VALUES(?, ?, ?, ?)', [$id, $me['id'], $comment, now()]);
         }
-        audit('entry.validate', 'entry', $id, $comment !== '' ? ['commentaire' => $comment] : []);
-        flash('ok', 'Opération validée.');
+        flash('ok', $action === 'validate' ? 'Ligne validée.' : 'Validation retirée.');
     } elseif ($action === 'contest' && $isValidator && !$e['cancelled']) {
         if ($comment === '') {
             db()->rollBack();
             flash('err', 'Explique pourquoi tu contestes.');
             redirect('entry', ['id' => $id]);
         }
-        q("UPDATE entries SET status = 'conteste', status_by = ?, status_at = ? WHERE id = ?", [$me['id'], now(), $id]);
+        $col = ok_col((int)$me['id']);
+        q("UPDATE entries SET status = 'conteste', status_by = ?, status_at = ?, $col = 0, {$col}_at = NULL WHERE id = ?", [$me['id'], now(), $id]);
         q('INSERT INTO comments(entry_id, user_id, body, created_at) VALUES(?, ?, ?, ?)', [$id, $me['id'], $comment, now()]);
         audit('entry.contest', 'entry', $id, ['motif' => $comment]);
         flash('ok', 'Opération contestée. Le motif est visible par les deux.');
@@ -62,7 +67,7 @@ $B = parties()['B'];
 
 layout_start('Opération #' . $id, 'entries');
 ?>
-<p class="back"><a href="<?= url('entries') ?>">← Opérations</a></p>
+<p class="back"><a href="<?= url('dashboard', ['m' => substr($e['op_date'], 0, 7)]) ?>">← <?= h(ucfirst(month_label(substr($e['op_date'], 0, 7)))) ?></a></p>
 <section class="card<?= $e['cancelled'] ? ' is-cancelled' : '' ?>">
   <div class="card-head">
     <h1><?= h($e['label']) ?></h1>
@@ -87,8 +92,11 @@ layout_start('Opération #' . $id, 'entries');
       <li><span>À</span><strong><?= h(user_name((int)$e['beneficiary'])) ?></strong></li>
     <?php endif; ?>
     <li><span>Saisi par</span><strong><?= h(user_name((int)$e['created_by'])) ?>, le <?= fdate($e['created_at'], true) ?></strong></li>
-    <?php if ($e['status_by']): ?>
-      <li><span><?= $e['status'] === 'valide' ? 'Validé' : 'Contesté' ?> par</span><strong><?= h(user_name((int)$e['status_by'])) ?>, le <?= fdate($e['status_at'], true) ?></strong></li>
+    <?php foreach ([(int)$A['id'] => 'ok_a', (int)$B['id'] => 'ok_b'] as $who => $col): ?>
+      <li><span>Validation de <?= h(user_name($who)) ?></span><strong><?= $e[$col] ? '✓ le ' . fdate($e[$col . '_at'], true) : 'en attente' ?></strong></li>
+    <?php endforeach; ?>
+    <?php if ($e['status'] === 'conteste'): ?>
+      <li><span>Contestée par</span><strong><?= h(user_name((int)$e['status_by'])) ?>, le <?= fdate($e['status_at'], true) ?></strong></li>
     <?php endif; ?>
     <?php if ($e['replaces']): ?>
       <li><span>Remplace</span><strong><a href="<?= url('entry', ['id' => $e['replaces']]) ?>">#<?= (int)$e['replaces'] ?></a></strong></li>
@@ -112,10 +120,11 @@ layout_start('Opération #' . $id, 'entries');
   <?php if ($isValidator): ?>
     <form method="post" class="form">
       <?= csrf_field() ?>
-      <label>Commentaire <?= $e['status'] === 'valide' ? '' : '(obligatoire pour contester)' ?>
+      <label>Commentaire (obligatoire pour contester)
         <textarea name="comment" rows="2" maxlength="2000"></textarea></label>
       <div class="actions">
-        <?php if ($e['status'] !== 'valide'): ?><button class="btn" name="action" value="validate">✓ Valider</button><?php endif; ?>
+        <?php if (!$myOk): ?><button class="btn" name="action" value="validate">✓ Valider</button>
+        <?php else: ?><button class="btn btn-ghost" name="action" value="unvalidate">Retirer ma validation</button><?php endif; ?>
         <?php if ($e['status'] !== 'conteste'): ?><button class="btn btn-warn" name="action" value="contest">✗ Contester</button><?php endif; ?>
       </div>
     </form>

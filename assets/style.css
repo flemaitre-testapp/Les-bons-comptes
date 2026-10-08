@@ -283,3 +283,31 @@ code.pw { font-size: 1.15rem; background: var(--surface); padding: .1rem .4rem; 
 .tone-perso::before { background: var(--c-perso); }
 .tone-remb::before { background: var(--c-remb); }
 .foot a { color: var(--muted); }
+
+/* Vue mensuelle */
+.month-nav { display: flex; align-items: center; justify-content: space-between; margin: 0 0 12px; }
+.month-nav h1 { margin: 0; font-size: 1.35rem; }
+.month-nav a { display: inline-flex; width: 44px; height: 44px; align-items: center; justify-content: center; border-radius: 50%;
+  background: var(--surface); border: 1px solid var(--line); text-decoration: none; font-size: 1.5rem; color: var(--ink); }
+.pad { padding: 16px 18px 0; }
+.pad-x { padding: 0 18px; }
+.small-txt { font-size: .82rem; }
+.center { text-align: center; color: var(--muted); font-size: .9rem; }
+.tbl.cmp td:first-child { color: var(--muted); }
+.fair-line { margin: .4rem 0 0; font-weight: 600; color: var(--c-perso); }
+.mrow { padding: .8rem 1rem .8rem .9rem; border-top: 1px solid var(--line); }
+.mrow.contested { background: var(--ko-bg); }
+.mrow-head { display: flex; justify-content: space-between; gap: .8rem; text-decoration: none; color: inherit; }
+.mrow-title { font-weight: 650; }
+.mrow-meta { color: var(--muted); font-size: .8rem; margin-top: .1rem; }
+.ko { color: var(--ko); }
+.split { display: flex; justify-content: space-between; gap: .6rem; font-size: .84rem; margin-top: .45rem; }
+.split-b { text-align: right; }
+.bar { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--c-remb) 35%, var(--line)); margin-top: .3rem; overflow: hidden; }
+.bar span { display: block; height: 100%; width: 0; background: var(--brand); }
+.oks { display: flex; gap: .5rem; margin-top: .55rem; flex-wrap: wrap; }
+.ok-form { margin: 0; }
+.ok { display: inline-flex; align-items: center; font: inherit; font-size: .8rem; font-weight: 600; padding: .3rem .7rem; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); }
+.ok-on { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+button.ok { cursor: pointer; min-height: 34px; }
+button.ok.mine { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }

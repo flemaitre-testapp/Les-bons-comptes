@@ -8,6 +8,11 @@
     });
   });
 
+  // Barres de répartition
+  document.querySelectorAll('.bar span[data-w]').forEach(function (el) {
+    el.style.width = el.getAttribute('data-w') + '%';
+  });
+
   // Impression du relevé
   document.querySelectorAll('[data-print]').forEach(function (b) {
     b.addEventListener('click', function () { window.print(); });

@@ -200,6 +200,11 @@ function create_entry(array $d): int
         'created_at' => now(),
     ];
     $e['content_hash'] = entry_hash($e);
+    // Celui qui saisit valide d'office sa propre ligne (pas pour les charges mensuelles automatiques)
+    if (empty($d['recurring_id'])) {
+        $e[ok_col((int)$_SESSION['uid'])] = 1;
+        $e[ok_col((int)$_SESSION['uid']) . '_at'] = $e['created_at'];
+    }
     $cols = array_keys($e);
     q('INSERT INTO entries(' . implode(',', $cols) . ') VALUES(:' . implode(',:', $cols) . ')', $e);
     $id = (int)db()->lastInsertId();
@@ -235,6 +240,23 @@ function pending_recurring(string $ym): array
     return q('SELECT r.* FROM recurring r WHERE r.active = 1 AND NOT EXISTS (
         SELECT 1 FROM entries e WHERE e.recurring_id = r.id AND e.period = ? AND e.cancelled = 0
     ) ORDER BY r.day_of_month, r.label', [$ym])->fetchAll();
+}
+
+function ok_col(int $uid): string
+{
+    return $uid === party_a_id() ? 'ok_a' : 'ok_b';
+}
+
+/** Coche ou décoche la validation d'une partie et met à jour le statut global. */
+function set_ok(array $e, int $uid, bool $on): void
+{
+    $col = ok_col($uid);
+    $e[$col] = $on ? 1 : 0;
+    $both = $e['ok_a'] && $e['ok_b'];
+    $status = $both ? 'valide' : ($e['status'] === 'conteste' ? 'conteste' : 'en_attente');
+    q("UPDATE entries SET $col = ?, {$col}_at = ?, status = ?, status_by = ?, status_at = ? WHERE id = ?",
+        [$on ? 1 : 0, $on ? now() : null, $status, $uid, now(), $e['id']]);
+    audit($on ? 'entry.validate' : 'entry.unvalidate', 'entry', (int)$e['id'], ['libelle' => $e['label'], 'montant' => money((int)$e['amount_cents'])]);
 }
 
 function status_badge(array $e): string
