@@ -20,11 +20,16 @@ function db(): PDO
 function migrate(PDO $pdo): void
 {
     $version = (int)$pdo->query('PRAGMA user_version')->fetchColumn();
-    if ($version >= 2) {
+    if ($version >= 3) {
+        return;
+    }
+    if ($version === 2) {
+        migrate_v3($pdo);
         return;
     }
     if ($version === 1) {
         migrate_v2($pdo);
+        migrate_v3($pdo);
         return;
     }
     $pdo->exec(<<<SQL
@@ -124,6 +129,7 @@ CREATE TABLE IF NOT EXISTS settings (
 PRAGMA user_version = 1;
 SQL);
     migrate_v2($pdo);
+    migrate_v3($pdo);
 }
 
 /** v2 : validation séparée par chaque partie (case Florian / case Julie). */
@@ -143,6 +149,15 @@ function migrate_v2(PDO $pdo): void
         $st->execute([$a]);
     }
     $pdo->exec('PRAGMA user_version = 2');
+}
+
+/** v3 : contestation chiffrée (montant accepté par la personne qui conteste). */
+function migrate_v3(PDO $pdo): void
+{
+    $pdo->exec('ALTER TABLE entries ADD COLUMN disputed_by INTEGER');
+    $pdo->exec('ALTER TABLE entries ADD COLUMN accepted_cents INTEGER');
+    $pdo->exec('ALTER TABLE entries ADD COLUMN dispute_ok INTEGER NOT NULL DEFAULT 0');
+    $pdo->exec('PRAGMA user_version = 3');
 }
 
 function q(string $sql, array $params = []): PDOStatement

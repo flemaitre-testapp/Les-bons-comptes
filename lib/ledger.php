@@ -50,7 +50,7 @@ function balance(string $mode = 'all', ?string $until = null, ?string $from = nu
     $A = (int)$p['A']['id'];
     $B = (int)$p['B']['id'];
     $z = [$A => 0, $B => 0];
-    $r = ['paid' => $z, 'share' => $z, 'sent' => $z, 'received' => $z, 'fair' => $z, 'total' => 0];
+    $r = ['paid' => $z, 'share' => $z, 'sent' => $z, 'received' => $z, 'fair' => $z, 'litige' => $z, 'total' => 0];
     $incomeBp = income_bp();
     $sql = 'SELECT * FROM entries WHERE cancelled = 0';
     $args = [];
@@ -72,9 +72,12 @@ function balance(string $mode = 'all', ?string $until = null, ?string $from = nu
         $payer = (int)$e['paid_by'];
         if ($e['kind'] === 'depense') {
             $r['paid'][$payer] += $amt;
-            [$a, $b] = split_amount($amt, (int)$e['part_a_bp']);
-            $r['share'][$A] += $a;
-            $r['share'][$B] += $b;
+            $ls = line_shares($e);
+            $r['share'][$A] += $ls['a'];
+            $r['share'][$B] += $ls['b'];
+            if ($ls['litige']) {
+                $r['litige'][(int)$e['disputed_by']] += $ls['litige'];
+            }
             $r['total'] += $amt;
             $fairBp = $e['fair_a_bp'] !== null ? (int)$e['fair_a_bp'] : $incomeBp;
             // Une dépense perso reste à 100 % à son bénéficiaire, revenus ou pas
@@ -123,6 +126,33 @@ function income_bp(): ?int
 function income_of(int $uid): int
 {
     return (int)setting($uid === party_a_id() ? 'income_a' : 'income_b', '0');
+}
+
+/**
+ * Parts effectives d'une dépense. Si une partie conteste, sa part est calculée
+ * sur le montant qu'elle accepte ; l'autre partie porte le reste.
+ * 'litige' = ce que la contestation retire à la part de celui qui conteste (0 si l'ajustement a été accepté).
+ */
+function line_shares(array $e): array
+{
+    $amt = (int)$e['amount_cents'];
+    [$a0, $b0] = split_amount($amt, (int)$e['part_a_bp']);
+    $r = ['a' => $a0, 'b' => $b0, 'a0' => $a0, 'b0' => $b0, 'litige' => 0, 'adjusted' => false];
+    if (($e['disputed_by'] ?? null) !== null && $e['accepted_cents'] !== null) {
+        [$aa, $ab] = split_amount((int)$e['accepted_cents'], (int)$e['part_a_bp']);
+        if ((int)$e['disputed_by'] === party_a_id()) {
+            $r['a'] = $aa;
+            $r['b'] = $amt - $aa;
+            $diff = $a0 - $aa;
+        } else {
+            $r['b'] = $ab;
+            $r['a'] = $amt - $ab;
+            $diff = $b0 - $ab;
+        }
+        $r['adjusted'] = true;
+        $r['litige'] = $e['dispute_ok'] ? 0 : $diff;
+    }
+    return $r;
 }
 
 /** Règle de base convenue : part de A (basis points). */
@@ -201,7 +231,7 @@ function create_entry(array $d): int
     ];
     $e['content_hash'] = entry_hash($e);
     // Celui qui saisit valide d'office sa propre ligne (pas pour les charges mensuelles automatiques)
-    if (empty($d['recurring_id'])) {
+    if (empty($d['recurring_id']) || !empty($d['auto_ok'])) {
         $e[ok_col((int)$_SESSION['uid'])] = 1;
         $e[ok_col((int)$_SESSION['uid']) . '_at'] = $e['created_at'];
     }
@@ -363,4 +393,90 @@ function generate_recurring(string $period): int
     audit('recurring.generate', null, null, ['mois' => month_label($period), 'nombre' => count($todo)]);
     db()->commit();
     return count($todo);
+}
+
+/** Peut-on ajuster cette ligne ? Charges mensuelles : les deux. Sinon : auteur ou admin. */
+function can_adjust(array $e, array $u): bool
+{
+    if ($e['cancelled'] || $e['kind'] !== 'depense') return false;
+    return $e['recurring_id'] ? true : can_cancel($e, $u);
+}
+
+/**
+ * Ajuste une dépense (montant et/ou répartition) : l'ancienne version est annulée
+ * avec renvoi vers la nouvelle, rien n'est effacé. Option : appliquer aux mois suivants.
+ */
+function adjust_entry(array $e, int $amount, int $bp, string $reason, bool $future): int
+{
+    $uid = (int)$_SESSION['uid'];
+    q('UPDATE entries SET cancelled = 1, cancelled_by = ?, cancelled_at = ?, cancel_reason = ? WHERE id = ?',
+        [$uid, now(), 'Ajustée : ' . $reason, $e['id']]);
+    $id = create_entry([
+        'kind' => 'depense', 'op_date' => $e['op_date'], 'label' => $e['label'], 'category_id' => $e['category_id'],
+        'amount_cents' => $amount, 'paid_by' => (int)$e['paid_by'], 'part_a_bp' => $bp, 'notes' => (string)$e['notes'],
+        'receipt' => $e['receipt'], 'receipt_name' => $e['receipt_name'], 'receipt_sha' => $e['receipt_sha'],
+        'recurring_id' => $e['recurring_id'], 'period' => $e['period'], 'replaces' => (int)$e['id'], 'auto_ok' => true,
+    ]);
+    q('UPDATE entries SET cancel_reason = ? WHERE id = ?', ['Ajustée par la ligne #' . $id . ' : ' . $reason, $e['id']]);
+    audit('entry.cancel', 'entry', (int)$e['id'], [
+        'raison' => $reason, 'remplacee_par' => $id,
+        'avant' => money((int)$e['amount_cents']) . ', ' . split_label($e),
+        'apres' => money($amount) . ', ' . split_label(['part_a_bp' => $bp, 'fair_a_bp' => null]),
+    ]);
+    q('INSERT INTO comments(entry_id, user_id, body, created_at) VALUES(?, ?, ?, ?)', [$id, $uid, $reason, now()]);
+    if ($future && $e['recurring_id']) {
+        $r = q('SELECT * FROM recurring WHERE id = ?', [$e['recurring_id']])->fetch();
+        if ($r) {
+            $mode = $bp === 5000 ? 'half' : 'custom';
+            q('UPDATE recurring SET amount_cents = ?, part_a_bp = ?, mode = ? WHERE id = ?', [$amount, $bp, $mode, $r['id']]);
+            audit('recurring.update', 'recurring', (int)$r['id'], [
+                'libelle' => $r['label'],
+                'avant' => money((int)$r['amount_cents']) . ', ' . rec_label($r['mode'], (int)$r['part_a_bp']),
+                'apres' => money($amount) . ', ' . rec_label($mode, $bp) . ' (mois suivants)',
+            ]);
+        }
+    }
+    return $id;
+}
+
+/** Contestation chiffrée : la personne indique le montant total qu'elle accepte (0 = refus). */
+function contest_entry(array $e, int $uid, int $acceptedCents, string $reason): void
+{
+    $col = ok_col($uid);
+    q("UPDATE entries SET status = 'conteste', status_by = ?, status_at = ?, disputed_by = ?, accepted_cents = ?, dispute_ok = 0,
+       $col = 0, {$col}_at = NULL WHERE id = ?", [$uid, now(), $uid, $acceptedCents, $e['id']]);
+    q('INSERT INTO comments(entry_id, user_id, body, created_at) VALUES(?, ?, ?, ?)', [$e['id'], $uid, 'Contestation : ' . $reason, now()]);
+    audit('entry.contest', 'entry', (int)$e['id'], [
+        'libelle' => $e['label'], 'montant' => money((int)$e['amount_cents']),
+        'montant_accepte' => money($acceptedCents), 'motif' => $reason,
+    ]);
+}
+
+function withdraw_contest(array $e, int $uid): void
+{
+    q("UPDATE entries SET status = 'en_attente', disputed_by = NULL, accepted_cents = NULL, dispute_ok = 0 WHERE id = ?", [$e['id']]);
+    audit('entry.contest_withdraw', 'entry', (int)$e['id'], ['libelle' => $e['label']]);
+    $e['status'] = 'en_attente';
+    set_ok($e, $uid, true);
+}
+
+/** L'autre partie accepte l'ajustement demandé : la ligne est validée avec le montant retenu. */
+function accept_contest(array $e, int $uid): void
+{
+    q("UPDATE entries SET dispute_ok = 1, status = 'valide', ok_a = 1, ok_b = 1,
+       ok_a_at = COALESCE(ok_a_at, ?), ok_b_at = COALESCE(ok_b_at, ?) WHERE id = ?", [now(), now(), $e['id']]);
+    audit('entry.contest_accept', 'entry', (int)$e['id'], ['libelle' => $e['label'], 'montant_retenu' => money((int)$e['accepted_cents'])]);
+}
+
+/** Qui doit quoi pour une ligne : [doit A→B, doit B→A] en centimes. */
+function line_owed(array $e): array
+{
+    $A = party_a_id();
+    $amt = (int)$e['amount_cents'];
+    if ($e['kind'] !== 'depense') {
+        // Remboursement : réduit la dette de celui qui verse
+        return (int)$e['paid_by'] === $A ? [-$amt, 0] : [0, -$amt];
+    }
+    $ls = line_shares($e);
+    return (int)$e['paid_by'] === $A ? [0, $ls['b']] : [$ls['a'], 0];
 }

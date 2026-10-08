@@ -72,7 +72,8 @@ if (is_post()) {
         }
         db()->commit();
         flash('ok', 'Dépense enregistrée.');
-        redirect('dashboard');
+        header('Location: ' . url('dashboard', ['m' => substr($f['op_date'], 0, 7)]) . '#e' . $id);
+        exit;
     }
 }
 

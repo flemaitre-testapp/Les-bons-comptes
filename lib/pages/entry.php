@@ -32,17 +32,15 @@ if (is_post()) {
             q('INSERT INTO comments(entry_id, user_id, body, created_at) VALUES(?, ?, ?, ?)', [$id, $me['id'], $comment, now()]);
         }
         flash('ok', $action === 'validate' ? 'Ligne validée.' : 'Validation retirée.');
-    } elseif ($action === 'contest' && $isValidator && !$e['cancelled']) {
-        if ($comment === '') {
+    } elseif ($action === 'contest' && !$e['cancelled'] && $e['kind'] === 'depense') {
+        $acc = parse_money(post('accepted') === '' ? '0' : post('accepted'));
+        if ($comment === '' || $acc === null || $acc > (int)$e['amount_cents']) {
             db()->rollBack();
-            flash('err', 'Explique pourquoi tu contestes.');
+            flash('err', 'Pour contester : montant accepté (0 pour refuser) et motif obligatoires.');
             redirect('entry', ['id' => $id]);
         }
-        $col = ok_col((int)$me['id']);
-        q("UPDATE entries SET status = 'conteste', status_by = ?, status_at = ?, $col = 0, {$col}_at = NULL WHERE id = ?", [$me['id'], now(), $id]);
-        q('INSERT INTO comments(entry_id, user_id, body, created_at) VALUES(?, ?, ?, ?)', [$id, $me['id'], $comment, now()]);
-        audit('entry.contest', 'entry', $id, ['motif' => $comment]);
-        flash('ok', 'Opération contestée. Le motif est visible par les deux.');
+        contest_entry($e, (int)$me['id'], $acc, $comment);
+        flash('ok', 'Contestation enregistrée.');
     } elseif ($action === 'cancel' && can_cancel($e, $me)) {
         if ($comment === '') {
             db()->rollBack();
@@ -125,7 +123,10 @@ layout_start('Opération #' . $id, 'entries');
       <div class="actions">
         <?php if (!$myOk): ?><button class="btn" name="action" value="validate">✓ Valider</button>
         <?php else: ?><button class="btn btn-ghost" name="action" value="unvalidate">Retirer ma validation</button><?php endif; ?>
-        <?php if ($e['status'] !== 'conteste'): ?><button class="btn btn-warn" name="action" value="contest">✗ Contester</button><?php endif; ?>
+        <?php if ($e['status'] !== 'conteste' && $e['kind'] === 'depense'): ?>
+          <label class="inline">Montant accepté (€) <input name="accepted" value="0" inputmode="decimal"></label>
+          <button class="btn btn-warn" name="action" value="contest">✗ Contester</button>
+        <?php endif; ?>
       </div>
     </form>
   <?php endif; ?>

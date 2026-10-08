@@ -311,3 +311,20 @@ code.pw { font-size: 1.15rem; background: var(--surface); padding: .1rem .4rem; 
 .ok-on { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
 button.ok { cursor: pointer; min-height: 34px; }
 button.ok.mine { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
+
+.tag { font-size: .68rem; font-weight: 600; padding: .05rem .4rem; border-radius: 999px; background: var(--line); color: var(--muted); vertical-align: 2px; }
+.dispute { margin-top: .45rem; font-size: .82rem; color: var(--ko); }
+.mini-comments { list-style: none; margin: .45rem 0 0; padding: .4rem .6rem; background: var(--bg); border-radius: 8px; font-size: .8rem; }
+.mini-comments li + li { margin-top: .2rem; }
+details.row-actions { margin-top: .5rem; }
+details.row-actions summary { cursor: pointer; font-size: .8rem; color: var(--muted); }
+details.row-actions[open] { background: var(--bg); border-radius: 10px; padding: .5rem .7rem .7rem; }
+.form.adjust { gap: .5rem; margin-top: .7rem; padding-top: .6rem; border-top: 1px dashed var(--line); }
+.form.adjust label { font-size: .82rem; }
+.tbl-wrap { overflow-x: auto; }
+.tbl tfoot td { font-weight: 700; border-top: 2px solid var(--line); }
+.owed tr td:first-child { border-left: 3px solid transparent; }
+.owed tr.tone-mensuel td:first-child { border-left-color: var(--c-mensuel); }
+.owed tr.tone-ponctuel td:first-child { border-left-color: var(--c-ponctuel); }
+.owed tr.tone-perso td:first-child { border-left-color: var(--c-perso); }
+.owed tr.tone-remb td:first-child { border-left-color: var(--c-remb); }
