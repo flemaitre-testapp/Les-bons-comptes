@@ -65,14 +65,7 @@ $fields = function (?array $r) use ($A, $B, $cats) {
     <select name="paid_by">
       <?php foreach ([$A, $B] as $u): ?><option value="<?= (int)$u['id'] ?>" <?= $sel($u['id'], $r['paid_by'] ?? $B['id']) ?>>Payé par <?= h($u['display_name']) ?></option><?php endforeach; ?>
     </select>
-    <select name="mode">
-      <option value="base" <?= $sel($m, 'base') ?>>Règle <?= h(rule_label(base_bp())) ?></option>
-      <option value="half" <?= $sel($m, 'half') ?>>50 / 50</option>
-      <option value="perso_a" <?= $sel($m, 'perso_a') ?>>Perso <?= h($A['display_name']) ?></option>
-      <option value="perso_b" <?= $sel($m, 'perso_b') ?>>Perso <?= h($B['display_name']) ?></option>
-      <option value="custom" <?= $sel($m, 'custom') ?>>Autre (% <?= h($A['display_name']) ?>)</option>
-    </select>
-    <input name="part_a" value="<?= $m === 'custom' && $r ? h(str_replace('.', ',', (string)($r['part_a_bp'] / 100))) : '' ?>" class="w-xs" inputmode="decimal" placeholder="%">
+    <?= split_chips($m, $m === 'custom' && $r ? str_replace('.', ',', (string)($r['part_a_bp'] / 100)) : '') ?>
     <select name="category_id"><option value="">(catégorie)</option>
       <?php foreach ($cats as $c): ?><option value="<?= (int)$c['id'] ?>" <?= $sel($c['id'], $r['category_id'] ?? '') ?>><?= h($c['name']) ?></option><?php endforeach; ?>
     </select>

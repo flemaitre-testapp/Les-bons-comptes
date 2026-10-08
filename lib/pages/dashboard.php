@@ -220,18 +220,11 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
             <strong>Ajuster cette ligne</strong>
             <div class="row2">
               <label>Montant réel (€) <input name="amount" value="<?= h(number_format($e['amount_cents'] / 100, 2, ',', '')) ?>" inputmode="decimal" required></label>
-              <label>Répartition
-                <select name="mode">
-                  <?php $cur = split_mode_of($bp, null); ?>
-                  <option value="base" <?= $cur === 'base' ? 'selected' : '' ?>>Règle <?= h(rule_label(base_bp())) ?></option>
-                  <option value="half" <?= $cur === 'half' ? 'selected' : '' ?>>50 / 50</option>
-                  <option value="perso_a" <?= $cur === 'perso_a' ? 'selected' : '' ?>>Perso <?= h($nameA) ?></option>
-                  <option value="perso_b" <?= $cur === 'perso_b' ? 'selected' : '' ?>>Perso <?= h($nameB) ?></option>
-                  <option value="custom" <?= $cur === 'custom' ? 'selected' : '' ?>>Autre % (<?= h($nameA) ?>)</option>
-                </select>
-              </label>
+              <span></span>
             </div>
-            <input name="part_a" value="<?= $cur === 'custom' ? h(str_replace('.', ',', (string)($bp / 100))) : '' ?>" placeholder="% <?= h($nameA) ?> si « Autre »" inputmode="decimal">
+            <?php $cur = split_mode_of($bp, null); ?>
+            <span class="lbl-sm">Répartition</span>
+            <?= split_chips($cur, $cur === 'custom' ? str_replace('.', ',', (string)($bp / 100)) : '') ?>
             <input name="reason" maxlength="500" placeholder="Pourquoi ? (obligatoire)" required>
             <?php if ($e['recurring_id']): ?><label class="check"><input type="checkbox" name="future" value="1"> Appliquer aussi aux mois suivants</label><?php endif; ?>
             <button class="btn small">Ajuster</button>

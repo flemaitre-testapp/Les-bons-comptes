@@ -328,3 +328,14 @@ details.row-actions[open] { background: var(--bg); border-radius: 10px; padding:
 .owed tr.tone-ponctuel td:first-child { border-left-color: var(--c-ponctuel); }
 .owed tr.tone-perso td:first-child { border-left-color: var(--c-perso); }
 .owed tr.tone-remb td:first-child { border-left-color: var(--c-remb); }
+
+/* Répartition en boutons */
+.pills { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.pills label { cursor: pointer; margin: 0; }
+.pills input[type=radio] { position: absolute; opacity: 0; pointer-events: none; }
+.pills span { display: inline-block; padding: .35rem .7rem; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: .82rem; font-weight: 500; }
+.pills input:checked + span { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
+.pills input:focus-visible + span { outline: 2px solid var(--accent); }
+.pills .pill-pct { width: 6.5rem !important; flex: 0 0 6.5rem !important; min-height: 34px; padding: .3rem .5rem; font-size: .82rem; }
+.lbl-sm { font-size: .82rem; font-weight: 600; }
+.rec-row .pills { flex-basis: 100%; }

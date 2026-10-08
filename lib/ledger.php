@@ -480,3 +480,22 @@ function line_owed(array $e): array
     $ls = line_shares($e);
     return (int)$e['paid_by'] === $A ? [0, $ls['b']] : [$ls['a'], 0];
 }
+
+/** Choix de répartition en boutons (pas de menu déroulant). */
+function split_chips(string $current, string $customVal = ''): string
+{
+    $A = user_name(party_a_id());
+    $Bn = user_name((int)parties()['B']['id']);
+    $opts = [
+        'base' => 'Règle ' . rule_label(base_bp()),
+        'half' => '50 / 50',
+        'perso_a' => 'Perso ' . $A,
+        'perso_b' => 'Perso ' . $Bn,
+        'custom' => 'Autre %',
+    ];
+    $html = '<div class="pills">';
+    foreach ($opts as $k => $l) {
+        $html .= '<label><input type="radio" name="mode" value="' . $k . '"' . ($current === $k ? ' checked' : '') . '><span>' . h($l) . '</span></label>';
+    }
+    return $html . '<input name="part_a" class="pill-pct" value="' . h($customVal) . '" placeholder="% ' . h($A) . '" inputmode="decimal" title="Part de ' . h($A) . ' si « Autre »"></div>';
+}
