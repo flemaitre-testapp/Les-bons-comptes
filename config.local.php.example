@@ -1,0 +1,8 @@
+<?php
+// Copie de ce fichier en config.local.php (jamais versionné).
+// deploy.sh le crée automatiquement sur o2switch.
+return [
+    // Dossier des données (base + justificatifs), idéalement HORS de public_html
+    'data_dir' => '/home/UTILISATEUR/budget-data',
+    'app_name' => 'Budget commun',
+];

@@ -1,0 +1,26 @@
+# Budget commun - configuration Apache / LiteSpeed (o2switch)
+Options -Indexes
+DirectoryIndex index.php
+AddDefaultCharset UTF-8
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  # Forcer HTTPS
+  RewriteCond %{HTTPS} off
+  RewriteCond %{HTTP:X-Forwarded-Proto} !https
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+  # Interdire l'accès direct au code, aux données et aux fichiers techniques
+  RewriteRule ^(lib|data|\.git)(/|$) - [F,L]
+  RewriteRule ^(config\.local\.php|deploy\.sh|README\.md|\.cpanel\.yml|\.gitignore)$ - [F,L]
+</IfModule>
+
+<FilesMatch "^\.">
+  Require all denied
+</FilesMatch>
+<FilesMatch "^(config\.local\.php|deploy\.sh|README\.md)$">
+  Require all denied
+</FilesMatch>
+
+<IfModule mod_headers.c>
+  Header always set X-Robots-Tag "noindex, nofollow"
+</IfModule>

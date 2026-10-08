@@ -1,0 +1,5 @@
+# Données réelles : jamais dans Git
+data/*
+!data/.htaccess
+config.local.php
+.DS_Store
