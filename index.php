@@ -29,10 +29,18 @@ if (!in_array($page, ['login', 'setup'], true)) {
 try {
     require __DIR__ . '/lib/pages/' . $page . '.php';
 } catch (Throwable $ex) {
+    $ref = strtoupper(bin2hex(random_bytes(3)));
+    @file_put_contents(DATA_DIR . '/erreurs.log', '[' . date('Y-m-d H:i:s') . "] #$ref " . $ex . "\n\n", FILE_APPEND);
     error_log((string)$ex);
-    if (db()->inTransaction()) {
-        db()->rollBack();
+    try {
+        if (db()->inTransaction()) {
+            db()->rollBack();
+        }
+    } catch (Throwable $ignored) {
     }
     http_response_code(500);
-    echo 'Une erreur est survenue. Elle a été enregistrée dans le journal d\'erreurs du serveur.';
+    echo '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">'
+        . '<p style="font:16px sans-serif;padding:16px">Une erreur est survenue (réf. ' . $ref . ').<br><small style="color:#666">'
+        . htmlspecialchars(basename($ex->getFile()) . ':' . $ex->getLine() . ' · ' . $ex->getMessage(), ENT_QUOTES, 'UTF-8')
+        . '</small></p>';
 }
