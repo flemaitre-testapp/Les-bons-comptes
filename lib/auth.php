@@ -105,3 +105,33 @@ function password_problem(string $pw, string $confirm): ?string
     }
     return null;
 }
+
+const DEFAULT_CATEGORIES = ['Logement & prêts', 'Assurances', 'Garde & nounou', 'École & cantine', 'Activités enfants',
+    'Vêtements & équipement', 'Santé', 'Épargne enfants', 'Abonnements', 'Voyages & sorties',
+    'Impôts & taxes', 'Transport', 'Cadeaux', 'Divers'];
+
+/** Crée les comptes prédéfinis (lib/seed.php) au tout premier lancement. */
+function seed_if_empty(): void
+{
+    $file = __DIR__ . '/seed.php';
+    if (has_users() || !is_file($file)) {
+        return;
+    }
+    $seed = require $file;
+    db()->beginTransaction();
+    foreach ($seed['users'] as $u) {
+        q('INSERT INTO users(username, display_name, password_hash, role, must_change_pw, created_at) VALUES(?, ?, ?, ?, ?, ?)',
+            [$u['username'], $u['display_name'], $u['hash'], $u['role'], (int)$u['must_change_pw'], now()]);
+    }
+    set_setting('income_a', (string)(int)$seed['income_a']);
+    set_setting('income_b', (string)(int)$seed['income_b']);
+    set_setting('default_mode', 'half');
+    foreach (DEFAULT_CATEGORIES as $i => $c) {
+        q('INSERT INTO categories(name, sort) VALUES(?, ?)', [$c, $i]);
+    }
+    audit('setup', null, null, [
+        'comptes' => implode(', ', array_map(fn($u) => $u['display_name'] . ' (' . $u['username'] . ')', $seed['users'])),
+        'revenus' => $seed['users'][0]['display_name'] . ' ' . money((int)$seed['income_a']) . ', ' . $seed['users'][1]['display_name'] . ' ' . money((int)$seed['income_b']),
+    ]);
+    db()->commit();
+}

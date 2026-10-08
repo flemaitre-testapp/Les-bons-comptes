@@ -13,6 +13,7 @@ if (!in_array($page, $routes, true)) {
     $page = 'dashboard';
 }
 
+seed_if_empty();
 if (!has_users() && $page !== 'setup') {
     redirect('setup');
 }

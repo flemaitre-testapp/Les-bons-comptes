@@ -48,10 +48,7 @@ if (is_post()) {
         set_setting('income_a', (string)$incA);
         set_setting('income_b', (string)$incB);
         set_setting('default_mode', 'half');
-        $cats = ['Logement & prêts', 'Assurances', 'Garde & nounou', 'École & cantine', 'Activités enfants',
-            'Vêtements & équipement', 'Santé', 'Épargne enfants', 'Abonnements', 'Voyages & sorties',
-            'Impôts & taxes', 'Transport', 'Cadeaux', 'Divers'];
-        foreach ($cats as $i => $c) {
+        foreach (DEFAULT_CATEGORIES as $i => $c) {
             q('INSERT INTO categories(name, sort) VALUES(?, ?)', [$c, $i]);
         }
         audit('setup', null, null, [
