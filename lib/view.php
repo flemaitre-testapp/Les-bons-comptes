@@ -24,7 +24,7 @@ function layout_start(string $title, string $active = ''): void
     <?php
     $links = [
         'dashboard' => 'Accueil',
-        'entries' => 'Opérations',
+        'entries' => 'Dépenses',
         'statement' => 'Relevé',
         'audit' => 'Journal',
     ];
@@ -80,10 +80,9 @@ function entry_row(array $e): string
         : h(user_name((int)$e['paid_by'])) . ' → ' . h(user_name((int)$e['beneficiary']));
     $meta = fdate($e['op_date']) . ' · ' . $who;
     if ($isDep) {
-        [$a, $b] = split_amount((int)$e['amount_cents'], (int)$e['part_a_bp']);
-        $meta .= ' · ' . h(user_name(party_a_id())) . ' ' . pct((int)$e['part_a_bp']);
+        $meta .= ' · ' . h(split_label($e));
     }
-    $cat = $isDep ? category_name($e['category_id'] ? (int)$e['category_id'] : null) : 'Remboursement';
+    $cat = $isDep ? '' : 'Remboursement';
     return '<a class="row' . ($e['cancelled'] ? ' cancelled' : '') . '" href="' . url('entry', ['id' => $e['id']]) . '">'
         . '<span class="row-main"><span class="row-title">' . h($e['label'])
         . ($e['receipt'] ? ' <span class="clip" title="Justificatif joint">📎</span>' : '') . '</span>'

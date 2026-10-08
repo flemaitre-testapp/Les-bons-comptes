@@ -5,7 +5,6 @@ $me = current_user();
 $p = parties();
 $A = $p['A'];
 $B = $p['B'];
-$defaultBp = (int)setting('default_part_a_bp', '5000');
 
 $replace = isset($_GET['replace']) ? load_entry((int)$_GET['replace']) : null;
 if ($replace && (!can_cancel($replace, $me) || $replace['kind'] !== 'depense')) {
@@ -19,7 +18,8 @@ $f = [
     'amount' => $replace ? number_format($replace['amount_cents'] / 100, 2, ',', '') : '',
     'category_id' => (string)($replace['category_id'] ?? ''),
     'paid_by' => (string)($replace['paid_by'] ?? $me['id']),
-    'part_a' => str_replace('.', ',', (string)((($replace['part_a_bp'] ?? $defaultBp)) / 100)),
+    'mode' => $replace ? split_mode_of((int)$replace['part_a_bp'], $replace['fair_a_bp'] === null ? null : (int)$replace['fair_a_bp']) : setting('default_mode', 'half'),
+    'part_a' => $replace ? str_replace('.', ',', (string)($replace['part_a_bp'] / 100)) : '',
     'notes' => $replace['notes'] ?? '',
     'reason' => '',
 ];
@@ -31,13 +31,13 @@ if (is_post()) {
         $f[$k] = post($k);
     }
     $amount = parse_money($f['amount']);
-    $bp = parse_pct($f['part_a']);
+    $bp = resolve_split($f['mode'], $f['part_a']);
     $payer = (int)$f['paid_by'];
     $cat = $f['category_id'] !== '' ? (int)$f['category_id'] : null;
     if (!valid_date($f['op_date'])) $errors[] = 'Date invalide.';
     if ($f['label'] === '' || mb_strlen($f['label']) > 120) $errors[] = 'Libellé obligatoire (120 caractères max).';
     if (!$amount) $errors[] = 'Montant invalide.';
-    if ($bp === null) $errors[] = 'Répartition invalide (entre 0 et 100 %).';
+    if ($bp === null) $errors[] = 'Répartition invalide.';
     if (!in_array($payer, [(int)$A['id'], (int)$B['id']], true)) $errors[] = 'Indique qui a payé.';
     if ($cat && !q('SELECT 1 FROM categories WHERE id = ?', [$cat])->fetchColumn()) $errors[] = 'Catégorie inconnue.';
     if ($replace && $f['reason'] === '') $errors[] = 'Indique la raison de la correction.';
@@ -71,8 +71,8 @@ if (is_post()) {
             audit('entry.cancel', 'entry', (int)$replace['id'], ['raison' => $reason, 'remplacee_par' => $id]);
         }
         db()->commit();
-        flash('ok', 'Dépense enregistrée. ' . user_name(other_party((int)$me['id'])) . ' pourra la valider.');
-        redirect('entry', ['id' => $id]);
+        flash('ok', 'Dépense enregistrée.');
+        redirect('dashboard');
     }
 }
 
@@ -81,25 +81,17 @@ layout_start($replace ? 'Corriger une dépense' : 'Nouvelle dépense', 'new');
 <section class="card narrow">
   <h1><?= $replace ? 'Corriger l\'opération #' . (int)$replace['id'] : 'Nouvelle dépense' ?></h1>
   <?php if ($replace): ?>
-    <p class="muted">L'opération d'origine ne sera pas effacée : elle sera marquée « annulée » avec un lien vers celle-ci, visible par les deux.</p>
+    <p class="muted">L'opération d'origine reste visible, barrée, avec un lien vers celle-ci.</p>
   <?php endif; ?>
   <?php foreach ($errors as $e): ?><div class="flash flash-err"><?= h($e) ?></div><?php endforeach; ?>
   <form method="post" enctype="multipart/form-data" class="form" id="dep-form"
-        data-a="<?= h($A['display_name']) ?>" data-b="<?= h($B['display_name']) ?>" data-default="<?= h((string)($defaultBp / 100)) ?>">
+        data-a="<?= h($A['display_name']) ?>" data-b="<?= h($B['display_name']) ?>">
     <?= csrf_field() ?>
-    <label>Libellé <input name="label" value="<?= h($f['label']) ?>" maxlength="120" placeholder="Ex. Cantine septembre, chaussures..." required></label>
+    <label>Quoi ? <input name="label" value="<?= h($f['label']) ?>" maxlength="120" placeholder="Ex. Cantine, chaussures, nounou..." required></label>
     <div class="row2">
       <label>Montant (€) <input name="amount" id="amount" value="<?= h($f['amount']) ?>" inputmode="decimal" placeholder="0,00" required></label>
       <label>Date <input type="date" name="op_date" value="<?= h($f['op_date']) ?>" required></label>
     </div>
-    <label>Catégorie
-      <select name="category_id">
-        <option value="">(aucune)</option>
-        <?php foreach (categories() as $c): ?>
-          <option value="<?= (int)$c['id'] ?>" <?= $f['category_id'] === (string)$c['id'] ? 'selected' : '' ?>><?= h($c['name']) ?></option>
-        <?php endforeach; ?>
-      </select>
-    </label>
     <div class="field">
       <span class="lbl">Qui a payé ?</span>
       <div class="seg">
@@ -108,24 +100,23 @@ layout_start($replace ? 'Corriger une dépense' : 'Nouvelle dépense', 'new');
         <?php endforeach; ?>
       </div>
     </div>
-    <div class="field">
-      <span class="lbl">Répartition</span>
-      <div class="chips">
-        <button type="button" data-pct="<?= h((string)($defaultBp / 100)) ?>">Règle habituelle (<?= h($A['display_name']) ?> <?= pct($defaultBp) ?>)</button>
-        <button type="button" data-pct="50">50 / 50</button>
-        <button type="button" data-pct="100">100 % <?= h($A['display_name']) ?></button>
-        <button type="button" data-pct="0">100 % <?= h($B['display_name']) ?></button>
-      </div>
-      <label class="inline">Part de <?= h($A['display_name']) ?> (%) <input name="part_a" id="part_a" value="<?= h($f['part_a']) ?>" inputmode="decimal" required></label>
-      <p class="hint" id="split-preview"></p>
-    </div>
-    <label>Note (facultatif) <textarea name="notes" rows="2" maxlength="2000"><?= h($f['notes']) ?></textarea></label>
-    <label>Justificatif : photo du ticket ou PDF (facultatif)
-      <input type="file" name="receipt" accept="image/*,application/pdf">
-    </label>
-    <?php if ($replace && $replace['receipt']): ?>
-      <label class="check"><input type="checkbox" name="keep_receipt" value="1" checked> Garder le justificatif d'origine si aucun nouveau n'est joint</label>
-    <?php endif; ?>
+    <?= split_fields($f['mode'], $f['part_a']) ?>
+    <details class="more"<?= ($f['category_id'] !== '' || $f['notes'] !== '' || $replace) ? ' open' : '' ?>>
+      <summary>Catégorie, note, justificatif</summary>
+      <label>Catégorie
+        <select name="category_id">
+          <option value="">(aucune)</option>
+          <?php foreach (categories() as $c): ?>
+            <option value="<?= (int)$c['id'] ?>" <?= $f['category_id'] === (string)$c['id'] ? 'selected' : '' ?>><?= h($c['name']) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+      <label>Note <textarea name="notes" rows="2" maxlength="2000"><?= h($f['notes']) ?></textarea></label>
+      <label>Photo du ticket ou PDF <input type="file" name="receipt" accept="image/*,application/pdf"></label>
+      <?php if ($replace && $replace['receipt']): ?>
+        <label class="check"><input type="checkbox" name="keep_receipt" value="1" checked> Garder le justificatif d'origine</label>
+      <?php endif; ?>
+    </details>
     <?php if ($replace): ?>
       <label>Raison de la correction <input name="reason" value="<?= h($f['reason']) ?>" maxlength="300" required placeholder="Ex. erreur de montant"></label>
     <?php endif; ?>

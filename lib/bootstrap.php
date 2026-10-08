@@ -5,7 +5,7 @@ define('APP_ROOT', dirname(__DIR__));
 
 $cfg = [
     'data_dir'  => APP_ROOT . '/data',
-    'app_name'  => 'Budget commun',
+    'app_name'  => 'Les bons comptes',
     'timezone'  => 'Europe/Paris',
 ];
 if (is_file(APP_ROOT . '/config.local.php')) {

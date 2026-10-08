@@ -29,16 +29,19 @@ if (preg_match('/^\d{4}-\d{2}$/', (string)($_GET['month'] ?? ''))) {
     $args[] = $_GET['month'];
 }
 $put(['N°', 'Date', 'Type', 'Libellé', 'Catégorie', 'Montant', 'Payé par', 'Bénéficiaire',
-    'Part ' . $A['display_name'], 'Part ' . $B['display_name'], 'Statut', 'Statut par', 'Statut le',
+    'Répartition', 'Part ' . $A['display_name'], 'Part ' . $B['display_name'],
+    'Part selon revenus ' . $A['display_name'], 'Part selon revenus ' . $B['display_name'], 'Statut', 'Statut par', 'Statut le',
     'Annulée', 'Raison annulation', 'Remplace n°', 'Saisi par', 'Saisi le', 'Note', 'Justificatif', 'Empreinte']);
 foreach (q('SELECT * FROM entries WHERE ' . implode(' AND ', $where) . ' ORDER BY op_date, id', $args) as $e) {
     $isDep = $e['kind'] === 'depense';
     [$pa, $pb] = $isDep ? split_amount((int)$e['amount_cents'], (int)$e['part_a_bp']) : [0, 0];
+    [$fa, $fb] = $isDep && $e['fair_a_bp'] !== null ? split_amount((int)$e['amount_cents'], (int)$e['fair_a_bp']) : [null, null];
     $put([
         $e['id'], fdate($e['op_date']), $isDep ? 'Dépense' : 'Remboursement', $e['label'],
         category_name($e['category_id'] ? (int)$e['category_id'] : null), $num((int)$e['amount_cents']),
         user_name((int)$e['paid_by']), $e['beneficiary'] ? user_name((int)$e['beneficiary']) : '',
-        $isDep ? $num($pa) : '', $isDep ? $num($pb) : '',
+        $isDep ? split_label($e) : '', $isDep ? $num($pa) : '', $isDep ? $num($pb) : '',
+        $fa === null ? '' : $num($fa), $fb === null ? '' : $num($fb),
         ['en_attente' => 'À valider', 'valide' => 'Validée', 'conteste' => 'Contestée'][$e['status']],
         $e['status_by'] ? user_name((int)$e['status_by']) : '', (string)$e['status_at'],
         $e['cancelled'] ? 'Oui' : 'Non', (string)$e['cancel_reason'], (string)$e['replaces'],

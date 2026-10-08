@@ -8,7 +8,7 @@ $errors = [];
 $f = [
     'a_user' => post('a_user'), 'a_name' => post('a_name'),
     'b_user' => post('b_user'), 'b_name' => post('b_name'),
-    'part_a' => post('part_a', '50'),
+    'inc_a' => post('inc_a'), 'inc_b' => post('inc_b'),
 ];
 
 if (is_post()) {
@@ -34,9 +34,10 @@ if (is_post()) {
     if ($p = password_problem(post('b_pw'), post('b_pw2'))) {
         $errors[] = 'Second compte : ' . $p;
     }
-    $bp = parse_pct($f['part_a']);
-    if ($bp === null) {
-        $errors[] = 'Répartition par défaut invalide.';
+    $incA = parse_money($f['inc_a']);
+    $incB = parse_money($f['inc_b']);
+    if ($incA === null || $incB === null) {
+        $errors[] = 'Indique les deux revenus mensuels (0 accepté).';
     }
 
     if (!$errors) {
@@ -44,7 +45,9 @@ if (is_post()) {
         $ins = 'INSERT INTO users(username, display_name, password_hash, role, must_change_pw, created_at) VALUES(?, ?, ?, ?, ?, ?)';
         q($ins, [$f['a_user'], $f['a_name'], password_hash(post('a_pw'), PASSWORD_DEFAULT), 'admin', 0, now()]);
         q($ins, [$f['b_user'], $f['b_name'], password_hash(post('b_pw'), PASSWORD_DEFAULT), 'member', 1, now()]);
-        set_setting('default_part_a_bp', (string)$bp);
+        set_setting('income_a', (string)$incA);
+        set_setting('income_b', (string)$incB);
+        set_setting('default_mode', 'half');
         $cats = ['Logement & prêts', 'Assurances', 'Garde & nounou', 'École & cantine', 'Activités enfants',
             'Vêtements & équipement', 'Santé', 'Épargne enfants', 'Abonnements', 'Voyages & sorties',
             'Impôts & taxes', 'Transport', 'Cadeaux', 'Divers'];
@@ -54,7 +57,7 @@ if (is_post()) {
         audit('setup', null, null, [
             'admin' => $f['a_name'] . ' (' . $f['a_user'] . ')',
             'second_compte' => $f['b_name'] . ' (' . $f['b_user'] . ')',
-            'repartition_defaut' => $f['a_name'] . ' ' . pct($bp),
+            'revenus' => $f['a_name'] . ' ' . money($incA) . ', ' . $f['b_name'] . ' ' . money($incB),
         ]);
         db()->commit();
         flash('ok', 'Installation terminée. Connecte-toi avec ton compte admin.');
@@ -85,9 +88,10 @@ layout_start('Installation');
       <label>Confirmer <input type="password" name="b_pw2" autocomplete="new-password" required></label>
     </fieldset>
     <fieldset>
-      <legend>Répartition par défaut des dépenses communes</legend>
-      <label>Part prise en charge par l'admin (%) <input name="part_a" value="<?= h($f['part_a']) ?>" inputmode="decimal" required></label>
-      <p class="hint">Exemple : 60 si tu prends 60 % et l'autre 40 %. Modifiable ensuite, et ajustable opération par opération.</p>
+      <legend>Revenus mensuels nets</legend>
+      <label>Revenu de l'admin (€) <input name="inc_a" value="<?= h($f['inc_a']) ?>" inputmode="decimal" required></label>
+      <label>Revenu du second compte (€) <input name="inc_b" value="<?= h($f['inc_b']) ?>" inputmode="decimal" required></label>
+      <p class="hint">Sert à calculer la part de chacun au prorata des revenus. Modifiable ensuite dans Admin.</p>
     </fieldset>
     <button class="btn">Créer les comptes</button>
   </form>

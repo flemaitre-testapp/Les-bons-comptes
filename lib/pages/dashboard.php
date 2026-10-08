@@ -10,7 +10,6 @@ if (is_post() && post('action') === 'generate') {
     }
     $todo = pending_recurring($period);
     db()->beginTransaction();
-    $n = 0;
     foreach ($todo as $r) {
         $day = min((int)$r['day_of_month'], (int)date('t', strtotime($period . '-01')));
         create_entry([
@@ -20,37 +19,18 @@ if (is_post() && post('action') === 'generate') {
             'category_id' => $r['category_id'],
             'amount_cents' => (int)$r['amount_cents'],
             'paid_by' => (int)$r['paid_by'],
-            'part_a_bp' => (int)$r['part_a_bp'],
-            'notes' => 'Charge récurrente',
+            'part_a_bp' => rec_bp($r),
+            'notes' => 'Charge mensuelle',
             'recurring_id' => (int)$r['id'],
             'period' => $period,
         ]);
-        $n++;
     }
-    if ($n) {
-        audit('recurring.generate', null, null, ['mois' => month_label($period), 'nombre' => $n]);
+    if ($todo) {
+        audit('recurring.generate', null, null, ['mois' => month_label($period), 'nombre' => count($todo)]);
     }
     db()->commit();
-    flash('ok', $n . ' charge(s) récurrente(s) ajoutée(s) pour ' . month_label($period) . '.');
+    flash('ok', count($todo) . ' charge(s) ajoutée(s) pour ' . month_label($period) . '.');
     redirect('dashboard');
-}
-
-$bal = balance('all');
-$balNoContest = balance('no_contest');
-$toValidate = q("SELECT * FROM entries WHERE cancelled = 0 AND status = 'en_attente' AND created_by <> ? ORDER BY op_date DESC", [$me['id']])->fetchAll();
-$contested = q("SELECT * FROM entries WHERE cancelled = 0 AND status = 'conteste' ORDER BY op_date DESC")->fetchAll();
-$recent = q('SELECT * FROM entries ORDER BY id DESC LIMIT 8')->fetchAll();
-$pendingRec = pending_recurring($ym);
-$p = parties();
-
-$month = q("SELECT paid_by, kind, SUM(amount_cents) s FROM entries WHERE cancelled = 0 AND substr(op_date, 1, 7) = ? GROUP BY paid_by, kind", [$ym])->fetchAll();
-$monthDep = 0;
-$monthByPayer = [];
-foreach ($month as $m) {
-    if ($m['kind'] === 'depense') {
-        $monthDep += (int)$m['s'];
-        $monthByPayer[(int)$m['paid_by']] = ($monthByPayer[(int)$m['paid_by']] ?? 0) + (int)$m['s'];
-    }
 }
 
 if ($me['pw_reset_notice']) {
@@ -58,15 +38,21 @@ if ($me['pw_reset_notice']) {
     q('UPDATE users SET pw_reset_notice = 0 WHERE id = ?', [$me['id']]);
 }
 
+$p = parties();
+$bal = balance('all');
+$month = balance('all', date('Y-m-t'), date('Y-m-01'));
+$fair = fairness_sentence($bal);
+$toValidate = q("SELECT * FROM entries WHERE cancelled = 0 AND status = 'en_attente' AND created_by <> ? ORDER BY op_date DESC", [$me['id']])->fetchAll();
+$contested = q("SELECT * FROM entries WHERE cancelled = 0 AND status = 'conteste' ORDER BY op_date DESC")->fetchAll();
+$recent = q('SELECT * FROM entries WHERE cancelled = 0 ORDER BY op_date DESC, id DESC LIMIT 8')->fetchAll();
+$pendingRec = pending_recurring($ym);
+
 layout_start('Accueil', 'dashboard');
 ?>
-<section class="hero <?= $bal['amount'] ? '' : 'even' ?>">
+<section class="hero">
   <p class="hero-label">Solde à date</p>
-  <p class="hero-amount"><?= $bal['amount'] ? money($bal['amount']) : '0,00 €' ?></p>
+  <p class="hero-amount"><?= money($bal['amount']) ?></p>
   <p class="hero-sentence"><?= h(balance_sentence($bal)) ?></p>
-  <?php if ($contested && ($balNoContest['amount'] !== $bal['amount'] || $balNoContest['debtor'] !== $bal['debtor'])): ?>
-    <p class="hero-note">Hors opérations contestées : <?= h(balance_sentence($balNoContest)) ?></p>
-  <?php endif; ?>
   <div class="hero-actions">
     <a class="btn" href="<?= url('new') ?>">+ Dépense</a>
     <a class="btn btn-ghost" href="<?= url('transfer') ?>">⇄ Remboursement</a>
@@ -75,8 +61,7 @@ layout_start('Accueil', 'dashboard');
 
 <?php if ($toValidate): ?>
 <section class="card attention">
-  <h2>À valider par toi (<?= count($toValidate) ?>)</h2>
-  <p class="muted">Ces opérations ont été saisies par <?= h(user_name(other_party((int)$me['id']))) ?>. Ouvre-les pour valider ou contester.</p>
+  <h2>À valider (<?= count($toValidate) ?>)</h2>
   <div class="list"><?php foreach ($toValidate as $e) echo entry_row($e); ?></div>
 </section>
 <?php endif; ?>
@@ -88,49 +73,39 @@ layout_start('Accueil', 'dashboard');
 </section>
 <?php endif; ?>
 
-<?php if ($pendingRec): ?>
+<?php if ($pendingRec && is_admin()): ?>
 <section class="card">
-  <h2>Charges récurrentes de <?= h(month_label($ym)) ?></h2>
-  <p class="muted"><?= count($pendingRec) ?> charge(s) pas encore ajoutée(s) ce mois-ci :
-    <?= h(implode(', ', array_map(fn($r) => $r['label'] . ' ' . money((int)$r['amount_cents']), $pendingRec))) ?></p>
-  <form method="post"><?= csrf_field() ?>
+  <form method="post" class="inline-form"><?= csrf_field() ?>
     <input type="hidden" name="action" value="generate"><input type="hidden" name="period" value="<?= h($ym) ?>">
-    <button class="btn btn-ghost">Ajouter les charges de <?= h(month_label($ym)) ?></button>
+    <span class="grow"><?= count($pendingRec) ?> charge(s) mensuelle(s) pas encore ajoutée(s) pour <?= h(month_label($ym)) ?>.</span>
+    <button class="btn btn-ghost small">Ajouter</button>
   </form>
 </section>
 <?php endif; ?>
 
-<section class="grid2">
-  <div class="card">
-    <h2>Ce mois-ci</h2>
-    <p class="big"><?= money($monthDep) ?></p>
-    <p class="muted">de dépenses communes en <?= h(month_label($ym)) ?></p>
-    <ul class="kv">
-      <?php foreach ($p as $u): ?>
-        <li><span><?= h($u['display_name']) ?> a payé</span><strong><?= money($monthByPayer[(int)$u['id']] ?? 0) ?></strong></li>
-      <?php endforeach; ?>
-    </ul>
-  </div>
-  <div class="card">
-    <h2>Depuis le début</h2>
-    <ul class="kv">
-      <?php foreach ($p as $u): $id = (int)$u['id']; ?>
-        <li class="kv-head"><span><?= h($u['display_name']) ?></span></li>
-        <li><span>Dépenses payées</span><strong><?= money($bal['paid'][$id]) ?></strong></li>
-        <li><span>Sa part des dépenses</span><strong><?= money($bal['share'][$id]) ?></strong></li>
-        <li><span>Remboursements versés</span><strong><?= money($bal['sent'][$id]) ?></strong></li>
-        <li><span>Remboursements reçus</span><strong><?= money($bal['received'][$id]) ?></strong></li>
-      <?php endforeach; ?>
-    </ul>
-  </div>
+<?php if ($fair): ?>
+<section class="card fair">
+  <h2>Contribution au regard des revenus</h2>
+  <p class="fair-big"><?= h($fair) ?></p>
+  <table class="tbl">
+    <thead><tr><th><?= h(ucfirst(month_label($ym))) ?></th><th class="r">A payé</th><th class="r">Revenu</th><th class="r">Effort</th></tr></thead>
+    <tbody>
+    <?php foreach ($p as $u): $id = (int)$u['id']; $inc = income_of($id); ?>
+      <tr><td><?= h($u['display_name']) ?></td><td class="r"><?= money($month['out'][$id]) ?></td><td class="r"><?= money($inc) ?></td>
+        <td class="r"><strong><?= $inc ? pct((int)round(max(0, $month['out'][$id]) * 10000 / $inc)) : '' ?></strong></td></tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+  <p class="hint">Effort = part du revenu mensuel consacrée aux dépenses communes ce mois-ci. Part selon revenus : <?= h(user_name(party_a_id())) ?> <?= pct(income_bp()) ?>, <?= h(user_name((int)$p['B']['id'])) ?> <?= pct(10000 - income_bp()) ?>.</p>
 </section>
+<?php endif; ?>
 
 <section class="card">
-  <div class="card-head"><h2>Dernières saisies</h2><a href="<?= url('entries') ?>">Tout voir</a></div>
+  <div class="card-head"><h2>Dernières dépenses</h2><a href="<?= url('entries') ?>">Tout voir</a></div>
   <?php if ($recent): ?>
     <div class="list"><?php foreach ($recent as $e) echo entry_row($e); ?></div>
   <?php else: ?>
-    <p class="empty">Aucune opération pour l'instant. Commence par ajouter une dépense.</p>
+    <p class="empty">Aucune opération pour l'instant.</p>
   <?php endif; ?>
 </section>
 <?php layout_end();

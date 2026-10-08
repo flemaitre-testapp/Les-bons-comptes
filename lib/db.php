@@ -48,7 +48,8 @@ CREATE TABLE IF NOT EXISTS recurring (
     category_id INTEGER REFERENCES categories(id),
     amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
     paid_by INTEGER NOT NULL REFERENCES users(id),
-    part_a_bp INTEGER NOT NULL CHECK (part_a_bp BETWEEN 0 AND 10000),
+    mode TEXT NOT NULL DEFAULT 'half' CHECK (mode IN ('half','income','custom')),
+    part_a_bp INTEGER NOT NULL DEFAULT 5000 CHECK (part_a_bp BETWEEN 0 AND 10000),
     day_of_month INTEGER NOT NULL DEFAULT 1,
     active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL
@@ -63,6 +64,7 @@ CREATE TABLE IF NOT EXISTS entries (
     paid_by INTEGER NOT NULL REFERENCES users(id),
     beneficiary INTEGER REFERENCES users(id),
     part_a_bp INTEGER CHECK (part_a_bp IS NULL OR part_a_bp BETWEEN 0 AND 10000),
+    fair_a_bp INTEGER CHECK (fair_a_bp IS NULL OR fair_a_bp BETWEEN 0 AND 10000),
     notes TEXT,
     receipt TEXT,
     receipt_name TEXT,

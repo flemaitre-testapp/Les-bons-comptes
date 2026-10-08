@@ -101,7 +101,7 @@ section.grid2 { margin-bottom: 14px; }
 .hint { color: var(--muted); font-size: .85rem; margin: .3rem 0 0; }
 .empty { color: var(--muted); text-align: center; padding: 1.4rem 1rem; margin: 0; }
 .note { background: var(--bg); border-radius: 10px; padding: .7rem .9rem; }
-.hash { color: var(--muted); font-size: .78rem; margin: 1rem 0 0; word-break: break-all; }
+.hash { color: var(--muted); font-size: .78rem; margin: 1rem 0 0; overflow-wrap: anywhere; }
 .back { margin: 0 0 .6rem; }
 .back a { text-decoration: none; }
 
@@ -166,6 +166,14 @@ label.inline input { width: 6rem; }
 .seg input:checked + span { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
 .seg input:focus-visible + span { outline: 2px solid var(--accent); }
 
+.seg-col { grid-template-columns: 1fr; }
+.seg-col span { text-align: left; font-weight: 500; }
+details.more { border: 1px dashed var(--line); border-radius: 10px; padding: .6rem .8rem; }
+details.more summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
+details.more[open] { display: flex; flex-direction: column; gap: .8rem; }
+[hidden] { display: none !important; }
+.fair { background: color-mix(in srgb, var(--accent) 10%, var(--surface)); border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.fair-big { font-size: 1.15rem; font-weight: 650; margin: .2rem 0 .6rem; }
 .chips { display: flex; flex-wrap: wrap; gap: .4rem; }
 .chips button {
   font: inherit; font-size: .82rem; font-weight: 500; cursor: pointer; color: var(--ink);
@@ -254,3 +262,6 @@ code.pw { font-size: 1.15rem; background: var(--surface); padding: .1rem .4rem; 
   .card { box-shadow: none; border: 0; padding: 0; }
   .tbl th, .tbl td { border-color: #ccc; }
 }
+.grow { flex: 1 1 200px; }
+.tbl tr.em td { font-weight: 700; border-top: 2px solid var(--line); }
+.statement-balance { font-size: 1.02rem; margin: .3rem 0; }

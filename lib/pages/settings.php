@@ -6,15 +6,30 @@ $B = parties()['B'];
 if (is_post()) {
     check_csrf();
     $action = post('action');
-    if ($action === 'default_split') {
-        $bp = parse_pct(post('part_a'));
-        if ($bp === null) {
-            flash('err', 'Pourcentage invalide.');
+    if ($action === 'incomes') {
+        $a = parse_money(post('inc_a'));
+        $b = parse_money(post('inc_b'));
+        $mode = in_array(post('default_mode'), ['half', 'income'], true) ? post('default_mode') : 'half';
+        if ($a === null || $b === null || $a + $b === 0) {
+            flash('err', 'Revenus invalides.');
         } else {
-            $old = (int)setting('default_part_a_bp', '5000');
-            set_setting('default_part_a_bp', (string)$bp);
-            audit('settings.update', null, null, ['repartition_defaut' => pct($old) . ' → ' . pct($bp) . ' pour ' . $A['display_name']]);
-            flash('ok', 'Répartition par défaut mise à jour (les opérations passées ne changent pas).');
+            $oldA = (int)setting('income_a', '0');
+            $oldB = (int)setting('income_b', '0');
+            $oldMode = setting('default_mode', 'half');
+            set_setting('income_a', (string)$a);
+            set_setting('income_b', (string)$b);
+            set_setting('default_mode', $mode);
+            if ($oldA !== $a || $oldB !== $b) {
+                audit('income.update', null, null, [
+                    $A['display_name'] => money($oldA) . ' → ' . money($a),
+                    $B['display_name'] => money($oldB) . ' → ' . money($b),
+                    'nouvelle_part_selon_revenus' => $A['display_name'] . ' ' . pct(income_bp()) . ', ' . $B['display_name'] . ' ' . pct(10000 - income_bp()),
+                ]);
+            }
+            if ($oldMode !== $mode) {
+                audit('settings.update', null, null, ['repartition_par_defaut' => $mode === 'half' ? '50/50' : 'selon revenus']);
+            }
+            flash('ok', 'Réglages enregistrés. Les opérations déjà saisies gardent leur calcul d\'origine.');
         }
     } elseif ($action === 'cat_add') {
         $name = post('name');
@@ -45,18 +60,33 @@ if (is_post()) {
     redirect('settings');
 }
 
-$bp = (int)setting('default_part_a_bp', '5000');
+$incA = (int)setting('income_a', '0');
+$incB = (int)setting('income_b', '0');
+$ib = income_bp();
+$mode = setting('default_mode', 'half');
+$fmt = fn(int $c) => str_replace('.', ',', rtrim(rtrim(number_format($c / 100, 2, '.', ''), '0'), '.'));
 layout_start('Admin', 'admin');
 ?>
 <h1>Administration</h1>
 <?php admin_tabs('settings'); ?>
 <section class="card">
-  <h2>Répartition par défaut</h2>
-  <p class="muted">Proposée automatiquement à chaque nouvelle dépense, modifiable au cas par cas. Changer ce réglage ne modifie pas les opérations déjà saisies.</p>
-  <form method="post" class="form inline-form">
-    <?= csrf_field() ?><input type="hidden" name="action" value="default_split">
-    <label class="inline">Part de <?= h($A['display_name']) ?> (%) <input name="part_a" value="<?= h(str_replace('.', ',', (string)($bp / 100))) ?>" inputmode="decimal" required></label>
-    <span class="muted">→ <?= h($B['display_name']) ?> : <?= pct(10000 - $bp) ?></span>
+  <h2>Revenus et répartition</h2>
+  <form method="post" class="form">
+    <?= csrf_field() ?><input type="hidden" name="action" value="incomes">
+    <div class="row2">
+      <label>Revenu mensuel de <?= h($A['display_name']) ?> (€) <input name="inc_a" value="<?= h($fmt($incA)) ?>" inputmode="decimal" required></label>
+      <label>Revenu mensuel de <?= h($B['display_name']) ?> (€) <input name="inc_b" value="<?= h($fmt($incB)) ?>" inputmode="decimal" required></label>
+    </div>
+    <?php if ($ib !== null): ?>
+      <p class="hint">Part selon revenus : <strong><?= h($A['display_name']) ?> <?= pct($ib) ?></strong>, <strong><?= h($B['display_name']) ?> <?= pct(10000 - $ib) ?></strong>.</p>
+    <?php endif; ?>
+    <label>Répartition proposée par défaut
+      <select name="default_mode">
+        <option value="half" <?= $mode === 'half' ? 'selected' : '' ?>>50 / 50</option>
+        <option value="income" <?= $mode === 'income' ? 'selected' : '' ?>>Selon revenus</option>
+      </select>
+    </label>
+    <p class="hint">Quelle que soit la répartition choisie, l'appli calcule toujours en parallèle la part de chacun selon les revenus, pour montrer qui contribue plus que sa part. Un changement de revenus ne modifie pas les opérations déjà saisies et est inscrit au journal.</p>
     <button class="btn small">Enregistrer</button>
   </form>
 </section>
@@ -80,7 +110,7 @@ layout_start('Admin', 'admin');
 </section>
 <section class="card">
   <h2>Sauvegarde</h2>
-  <p class="muted">Télécharge régulièrement les deux exports et garde-les hors du serveur (mail, cloud). En cas de litige, ce sont eux, avec les relevés PDF envoyés à l'autre partie, qui font foi.</p>
+  <p class="muted">Télécharge régulièrement les exports et garde-les hors du serveur. Chaque mois, envoie le relevé PDF par mail à l'autre partie.</p>
   <p><a class="btn btn-ghost small" href="<?= url('export') ?>">Export des opérations</a> <a class="btn btn-ghost small" href="<?= url('export', ['type' => 'journal']) ?>">Export du journal</a></p>
 </section>
 <?php layout_end();

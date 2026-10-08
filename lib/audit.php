@@ -41,7 +41,8 @@ function entry_hash(array $e): string
     return hash('sha256', json_encode([
         $e['kind'], $e['op_date'], $e['label'], $e['category_id'] === null ? null : (int)$e['category_id'],
         (int)$e['amount_cents'], (int)$e['paid_by'], $e['beneficiary'] === null ? null : (int)$e['beneficiary'],
-        $e['part_a_bp'] === null ? null : (int)$e['part_a_bp'], (string)$e['notes'],
+        $e['part_a_bp'] === null ? null : (int)$e['part_a_bp'],
+        $e['fair_a_bp'] === null ? null : (int)$e['fair_a_bp'], (string)$e['notes'],
         (string)$e['receipt_sha'], (int)$e['created_by'], $e['created_at'],
     ], JSON_UNESCAPED_UNICODE));
 }
@@ -94,6 +95,7 @@ const AUDIT_LABELS = [
     'recurring.update' => 'Charge récurrente modifiée',
     'recurring.generate' => 'Charges récurrentes générées',
     'settings.update' => 'Réglages modifiés',
+    'income.update' => 'Revenus mis à jour',
     'category.create' => 'Catégorie créée',
     'category.update' => 'Catégorie modifiée',
     'export' => 'Export des données',

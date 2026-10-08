@@ -79,6 +79,9 @@ layout_start('Opération #' . $id, 'entries');
       <?php [$pa, $pb] = split_amount((int)$e['amount_cents'], (int)$e['part_a_bp']); ?>
       <li><span>Part de <?= h($A['display_name']) ?></span><strong><?= money($pa) ?> (<?= pct((int)$e['part_a_bp']) ?>)</strong></li>
       <li><span>Part de <?= h($B['display_name']) ?></span><strong><?= money($pb) ?> (<?= pct(10000 - (int)$e['part_a_bp']) ?>)</strong></li>
+      <?php if ($e['fair_a_bp'] !== null && (int)$e['fair_a_bp'] !== (int)$e['part_a_bp']): [$fa, $fb] = split_amount((int)$e['amount_cents'], (int)$e['fair_a_bp']); ?>
+        <li><span>Selon les revenus, cela aurait été</span><strong><?= h($A['display_name']) ?> <?= money($fa) ?> · <?= h($B['display_name']) ?> <?= money($fb) ?></strong></li>
+      <?php endif; ?>
     <?php else: ?>
       <li><span>Versé par</span><strong><?= h(user_name((int)$e['paid_by'])) ?></strong></li>
       <li><span>À</span><strong><?= h(user_name((int)$e['beneficiary'])) ?></strong></li>

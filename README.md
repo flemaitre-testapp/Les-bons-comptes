@@ -1,4 +1,4 @@
-# Budget commun
+# Les bons comptes
 
 Petite application web pour suivre les dépenses communes entre deux personnes : qui a payé quoi, la part de chacun, les remboursements, et le solde à date. Chaque action est tracée dans un journal scellé, visible par les deux.
 
