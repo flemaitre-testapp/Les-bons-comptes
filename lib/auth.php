@@ -234,6 +234,19 @@ function upgrade_oct2026(): void
     }
     if (setting('data_oct2026') === '1') {
         // Voyage Rose : ponctuel (octobre seulement), pas une charge mensuelle
+        if (setting('data_oct2026c') !== '1') {
+            // Cadeau copine Rose et coiffeur filles : 100 % Florian
+            db()->beginTransaction();
+            foreach (['Cadeau copine Rose', 'Coiffeur filles'] as $lab) {
+                foreach (q("SELECT * FROM entries WHERE cancelled = 0 AND label = ? AND substr(op_date, 1, 7) = '2026-10'", [$lab])->fetchAll() as $e) {
+                    if ((int)$e['part_a_bp'] !== 10000) {
+                        adjust_entry($e, (int)$e['amount_cents'], 10000, '100 % Florian', false);
+                    }
+                }
+            }
+            set_setting('data_oct2026c', '1');
+            db()->commit();
+        }
         if (setting('data_oct2026b') !== '1') {
             $r = q("SELECT * FROM recurring WHERE label = 'Voyage Rose' AND active = 1")->fetch();
             if ($r) {
@@ -307,10 +320,10 @@ function upgrade_oct2026(): void
     db()->beginTransaction();
     $once = [
         ['Tenue de danse Rose', 2427, 5000, $B, 'Vêtements & équipement', 0, ''],
-        ['Cadeau copine Rose', 1000, 5000, $B, 'Cadeaux', 0, ''],
+        ['Cadeau copine Rose', 1000, 10000, $B, 'Cadeaux', 0, ''],
         ['Voyage Rose', 8500, 5000, $B, 'Voyages & sorties', 0, ''],
         ['Trajet Paris', 510, 10000, $B, 'Transport', 0, ''],
-        ['Coiffeur filles', 1500, 5000, $A, 'Divers', 0, ''],
+        ['Coiffeur filles', 1500, 10000, $A, 'Divers', 0, ''],
         ['PAJE (perçue par Julie)', 19816, 5000, $B, 'Divers', 1, 'Allocation de 198,16 € perçue par Julie, à partager 50/50 : 99,08 € reviennent à Florian.'],
     ];
     foreach ($once as [$label, $amt, $bp, $payer, $c, $rec, $note]) {
@@ -328,17 +341,18 @@ function upgrade_oct2026(): void
     }
     set_setting('data_oct2026', '1');
     set_setting('data_oct2026b', '1');
+    set_setting('data_oct2026c', '1');
     db()->commit();
 }
 
 /** Remise à zéro des commentaires demandée par Florian le 09/10/2026 (une seule fois, après la reprise d'octobre). */
 function reset_comments_once(): void
 {
-    if (!is_admin() || setting('comments_reset_20261009') === '1') {
+    if (!is_admin() || setting('comments_reset_v2') === '1') {
         return;
     }
     $n = (int)q('SELECT COUNT(*) FROM comments')->fetchColumn();
     q('DELETE FROM comments');
-    set_setting('comments_reset_20261009', '1');
+    set_setting('comments_reset_v2', '1');
     audit('comments.reset', null, null, ['commentaires_supprimes' => $n]);
 }

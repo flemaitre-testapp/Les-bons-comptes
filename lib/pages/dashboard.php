@@ -165,6 +165,8 @@ $owedB = 0;
 foreach ($rows as $e) {
     if (!$e[$myCol]) $todoMe++;
     if ($e['ok_a'] && $e['ok_b']) $okBoth++;
+    $okA = ($okA ?? 0) + ($e['ok_a'] ? 1 : 0);
+    $okB = ($okB ?? 0) + ($e['ok_b'] ? 1 : 0);
     [$oa, $ob] = line_owed($e);
     $owedA += $oa;
     $owedB += $ob;
@@ -263,12 +265,12 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
 <?php endif; ?>
 
 <section class="card flush">
-  <div class="card-head pad"><h2>Lignes du mois</h2><span class="muted small-txt"><?= $okBoth ?>/<?= count($rows) ?> validées par les deux</span></div>
+  <div class="card-head pad"><h2>Lignes du mois</h2><span class="muted small-txt val-count">Validées : <span class="c-a"><?= h($nameA) ?> <?= $okA ?? 0 ?>/<?= count($rows) ?></span> · <span class="c-b"><?= h($nameB) ?> <?= $okB ?? 0 ?>/<?= count($rows) ?></span></span></div>
   <div class="pad-x"><?= legend() ?></div>
   <?php if ($todoMe): ?>
     <form method="post" class="pad-x valid-all" data-confirm="Valider les <?= $todoMe ?> ligne(s) de <?= h(month_label($m)) ?> que tu n'as pas encore validées ?">
       <?= csrf_field() ?><input type="hidden" name="action" value="ok_all"><input type="hidden" name="id" value="0">
-      <button class="btn small">✓ Tout valider (<?= $todoMe ?>)</button>
+      <button class="btn small">✓ Valider mes <?= $todoMe ?> ligne(s) restante(s)</button>
     </form>
   <?php endif; ?>
   <?php if (!$rows): ?><p class="empty">Aucune ligne ce mois-ci.</p><?php endif; ?>
