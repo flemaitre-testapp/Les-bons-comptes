@@ -412,3 +412,5 @@ dialog.sheet .mrow-head { padding-right: 2.6rem; }
 .dot { flex: 0 0 1.25rem; }
 .t-foot { flex-wrap: nowrap; min-width: 0; }
 .t-type { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tt-recette { background: color-mix(in srgb, #b8860b 18%, transparent); color: #9a6f00; }
+@media (prefers-color-scheme: dark) { .tt-recette { color: #e6c15a; } }

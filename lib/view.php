@@ -74,7 +74,7 @@ function entry_row(array $e): string
 {
     $isDep = $e['kind'] === 'depense';
     $who = $isDep
-        ? 'Payé par ' . h(user_name((int)$e['paid_by']))
+        ? ucfirst(paid_word($e)) . ' ' . h(user_name((int)$e['paid_by']))
         : h(user_name((int)$e['paid_by'])) . ' → ' . h(user_name((int)$e['beneficiary']));
     $meta = fdate($e['op_date']) . ' · ' . $who;
     if ($isDep) {
@@ -96,5 +96,5 @@ function legend(): string
     return '<p class="legend"><span class="tone tone-pa">Payé par ' . h($A) . '</span>'
         . '<span class="tone tone-pb">Payé par ' . h($B) . '</span>'
         . '<span class="tt tt-mensuel">Mensuel</span><span class="tt tt-ponctuel">Ponctuel</span>'
-        . '<span class="tt tt-perso">Perso</span><span class="tt tt-remb">Paiement</span></p>';
+        . '<span class="tt tt-perso">Perso</span><span class="tt tt-recette">Recette</span><span class="tt tt-remb">Paiement</span></p>';
 }

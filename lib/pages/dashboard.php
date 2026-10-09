@@ -293,7 +293,7 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
         <span class="dot <?= $e['ok_b'] ? 'on' : '' ?>" title="<?= h($nameB) ?>"><?= h(mb_substr($nameB, 0, 1)) ?></span>
         <?php if ($nbC): ?><span class="t-ic">💬<?= $nbC ?></span><?php endif; ?>
         <?php if ($hasProp): ?><span class="t-ic" title="Proposition en attente">✎</span><?php endif; ?>
-        <span class="t-type tt-<?= entry_tone($e) ?>"><?= ['mensuel' => 'Mensuel', 'ponctuel' => 'Ponctuel', 'perso' => 'Perso', 'remb' => 'Paiement'][entry_tone($e)] ?></span>
+        <span class="t-type tt-<?= entry_tone($e) ?>"><?= ['mensuel' => 'Mensuel', 'ponctuel' => 'Ponctuel', 'perso' => 'Perso', 'remb' => 'Paiement', 'recette' => 'Recette'][entry_tone($e)] ?></span>
       </span>
     </button>
   <?php endforeach; ?>
@@ -312,7 +312,7 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
         <span class="mrow-title"><?= h($e['label']) ?><?= $e['receipt'] ? ' 📎' : '' ?><?= $e['replaces'] ? ' <span class="tag">ajustée</span>' : '' ?></span>
         <span class="amt"><?= money((int)$e['amount_cents']) ?></span>
       </a>
-      <div class="mrow-meta"><?= fdate($e['op_date']) ?> · payé par <?= h(user_name((int)$e['paid_by'])) ?><?= $isDep ? ' · ' . h(split_label($e)) : ' → ' . h(user_name((int)$e['beneficiary'])) ?></div>
+      <div class="mrow-meta"><?= fdate($e['op_date']) ?> · <?= paid_word($e) ?> <?= h(user_name((int)$e['paid_by'])) ?><?= $isDep ? ' · ' . h(split_label($e)) : ' → ' . h(user_name((int)$e['beneficiary'])) ?></div>
       <?php if ($isDep): ?>
         <div class="split">
           <span><?= h($nameA) ?> <?= pct($bp) ?> · <?php if ($ls['a'] !== $ls['a0']): ?><s><?= money($ls['a0']) ?></s> <?php endif; ?><strong><?= money($ls['a']) ?></strong></span>

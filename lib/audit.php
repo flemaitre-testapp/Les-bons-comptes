@@ -38,13 +38,17 @@ function audit(string $action, ?string $entity = null, ?int $entityId = null, ar
 /** Empreinte d'une opération au moment de sa création (montant, date, payeur, répartition...). */
 function entry_hash(array $e): string
 {
-    return hash('sha256', json_encode([
+    $data = [
         $e['kind'], $e['op_date'], $e['label'], $e['category_id'] === null ? null : (int)$e['category_id'],
         (int)$e['amount_cents'], (int)$e['paid_by'], $e['beneficiary'] === null ? null : (int)$e['beneficiary'],
         $e['part_a_bp'] === null ? null : (int)$e['part_a_bp'],
         $e['fair_a_bp'] === null ? null : (int)$e['fair_a_bp'], (string)$e['notes'],
         (string)$e['receipt_sha'], (int)$e['created_by'], $e['created_at'],
-    ], JSON_UNESCAPED_UNICODE));
+    ];
+    if (!empty($e['recette'])) {
+        $data[] = 'recette';
+    }
+    return hash('sha256', json_encode($data, JSON_UNESCAPED_UNICODE));
 }
 
 /** Vérifie la chaîne du journal et l'empreinte de chaque opération. */

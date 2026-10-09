@@ -20,13 +20,14 @@ function db(): PDO
 function migrate(PDO $pdo): void
 {
     $version = (int)$pdo->query('PRAGMA user_version')->fetchColumn();
-    if ($version >= 4) {
+    if ($version >= 5) {
         return;
     }
     if ($version >= 1) {
         if ($version < 2) migrate_v2($pdo);
         if ($version < 3) migrate_v3($pdo);
-        migrate_v4($pdo);
+        if ($version < 4) migrate_v4($pdo);
+        migrate_v5($pdo);
         return;
     }
     $pdo->exec(<<<SQL
@@ -128,6 +129,7 @@ SQL);
     migrate_v2($pdo);
     migrate_v3($pdo);
     migrate_v4($pdo);
+    migrate_v5($pdo);
 }
 
 /** v2 : validation séparée par chaque partie (case Florian / case Julie). */
@@ -197,4 +199,11 @@ CREATE TABLE IF NOT EXISTS proposals (
 CREATE INDEX IF NOT EXISTS ix_proposals_entry ON proposals(entry_id, status);
 PRAGMA user_version = 4;
 SQL);
+}
+
+/** v5 : recettes à partager (ex. PAJE perçue par l'un, dont l'autre a droit à une part). */
+function migrate_v5(PDO $pdo): void
+{
+    $pdo->exec('ALTER TABLE entries ADD COLUMN recette INTEGER NOT NULL DEFAULT 0');
+    $pdo->exec('PRAGMA user_version = 5');
 }

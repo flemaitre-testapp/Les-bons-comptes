@@ -70,7 +70,14 @@ function balance(string $mode = 'all', ?string $until = null, ?string $from = nu
     foreach (q($sql, $args) as $e) {
         $amt = (int)$e['amount_cents'];
         $payer = (int)$e['paid_by'];
-        if ($e['kind'] === 'depense') {
+        if ($e['kind'] === 'depense' && !empty($e['recette'])) {
+            // Recette perçue par l'un : chacun n'a droit qu'à sa part
+            $ls = line_shares($e);
+            $r['paid'][$payer] -= $amt;
+            $r['share'][$A] -= $ls['a'];
+            $r['share'][$B] -= $ls['b'];
+            $r['recettes'] = ($r['recettes'] ?? 0) + $amt;
+        } elseif ($e['kind'] === 'depense') {
             $r['paid'][$payer] += $amt;
             $ls = line_shares($e);
             $r['share'][$A] += $ls['a'];
@@ -183,6 +190,7 @@ function split_label(array $e): string
 function entry_tone(array $e): string
 {
     if ($e['kind'] !== 'depense') return 'remb';
+    if (!empty($e['recette'])) return 'recette';
     $bp = (int)$e['part_a_bp'];
     if ($bp === 10000 || $bp === 0) return 'perso';
     return $e['recurring_id'] ? 'mensuel' : 'ponctuel';
@@ -227,6 +235,7 @@ function create_entry(array $d): int
         'recurring_id' => $d['recurring_id'] ?? null,
         'period' => $d['period'] ?? null,
         'replaces' => $d['replaces'] ?? null,
+        'recette' => !empty($d['recette']) ? 1 : 0,
         'created_by' => (int)$_SESSION['uid'],
         'created_at' => now(),
     ];
@@ -460,6 +469,7 @@ function adjust_entry(array $e, int $amount, int $bp, string $reason, bool $futu
         'amount_cents' => $amount, 'paid_by' => (int)$e['paid_by'], 'part_a_bp' => $bp, 'notes' => (string)$e['notes'],
         'receipt' => $e['receipt'], 'receipt_name' => $e['receipt_name'], 'receipt_sha' => $e['receipt_sha'],
         'recurring_id' => $e['recurring_id'], 'period' => $e['period'], 'replaces' => (int)$e['id'], 'auto_ok' => true,
+        'recette' => (int)($e['recette'] ?? 0),
     ]);
     q('UPDATE entries SET cancel_reason = ? WHERE id = ?', ['Ajustée par la ligne #' . $id . ' : ' . $reason, $e['id']]);
     audit('entry.cancel', 'entry', (int)$e['id'], [
@@ -522,6 +532,10 @@ function line_owed(array $e): array
         return (int)$e['paid_by'] === $A ? [-$amt, 0] : [0, -$amt];
     }
     $ls = line_shares($e);
+    if (!empty($e['recette'])) {
+        // Celui qui a perçu doit à l'autre sa part
+        return (int)$e['paid_by'] === $A ? [$ls['b'], 0] : [0, $ls['a']];
+    }
     return (int)$e['paid_by'] === $A ? [0, $ls['b']] : [$ls['a'], 0];
 }
 
@@ -561,4 +575,9 @@ function apply_to_current_month(callable $match, string $reason): int
         }
     }
     return $n;
+}
+
+function paid_word(array $e): string
+{
+    return !empty($e['recette']) ? 'perçu par' : 'payé par';
 }
