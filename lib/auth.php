@@ -348,11 +348,11 @@ function upgrade_oct2026(): void
 /** Remise à zéro des commentaires demandée par Florian le 09/10/2026 (une seule fois, après la reprise d'octobre). */
 function reset_comments_once(): void
 {
-    if (!is_admin() || setting('comments_reset_v2') === '1') {
+    if (!is_admin() || setting('comments_reset_v3') === '1') {
         return;
     }
     $n = (int)q('SELECT COUNT(*) FROM comments')->fetchColumn();
     q('DELETE FROM comments');
-    set_setting('comments_reset_v2', '1');
+    set_setting('comments_reset_v3', '1');
     audit('comments.reset', null, null, ['commentaires_supprimes' => $n]);
 }

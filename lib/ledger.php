@@ -424,8 +424,6 @@ function propose_adjust(array $e, int $uid, int $amount, int $bp, string $reason
     q('INSERT INTO proposals(entry_id, user_id, amount_cents, part_a_bp, future, reason, created_at) VALUES(?, ?, ?, ?, ?, ?, ?)',
         [$e['id'], $uid, $amount, $bp, $future ? 1 : 0, $reason, now()]);
     $pid = (int)db()->lastInsertId();
-    q('INSERT INTO comments(entry_id, user_id, body, created_at) VALUES(?, ?, ?, ?)',
-        [$e['id'], $uid, 'Propose ' . money($amount) . ' · ' . split_label(['part_a_bp' => $bp, 'fair_a_bp' => null]) . ' : ' . $reason, now()]);
     audit('proposal.create', 'entry', (int)$e['id'], [
         'proposition' => $pid, 'libelle' => $e['label'],
         'avant' => money((int)$e['amount_cents']) . ', ' . split_label($e),
@@ -450,8 +448,6 @@ function accept_proposal(array $p, array $e): int
 function refuse_proposal(array $p, string $note): void
 {
     q("UPDATE proposals SET status = 'refusee', decided_by = ?, decided_at = ?, decision_note = ? WHERE id = ?", [$_SESSION['uid'], now(), $note, $p['id']]);
-    q('INSERT INTO comments(entry_id, user_id, body, created_at) VALUES(?, ?, ?, ?)',
-        [$p['entry_id'], $_SESSION['uid'], 'Proposition refusée : ' . $note, now()]);
     audit('proposal.refuse', 'entry', (int)$p['entry_id'], ['proposition' => (int)$p['id'], 'motif' => $note]);
 }
 
@@ -477,7 +473,6 @@ function adjust_entry(array $e, int $amount, int $bp, string $reason, bool $futu
         'avant' => money((int)$e['amount_cents']) . ', ' . split_label($e),
         'apres' => money($amount) . ', ' . split_label(['part_a_bp' => $bp, 'fair_a_bp' => null]),
     ]);
-    q('INSERT INTO comments(entry_id, user_id, body, created_at) VALUES(?, ?, ?, ?)', [$id, $uid, $reason, now()]);
     if ($future && $e['recurring_id']) {
         $r = q('SELECT * FROM recurring WHERE id = ?', [$e['recurring_id']])->fetch();
         if ($r) {
@@ -499,7 +494,6 @@ function contest_entry(array $e, int $uid, int $acceptedCents, string $reason): 
     $col = ok_col($uid);
     q("UPDATE entries SET status = 'conteste', status_by = ?, status_at = ?, disputed_by = ?, accepted_cents = ?, dispute_ok = 0,
        $col = 0, {$col}_at = NULL WHERE id = ?", [$uid, now(), $uid, $acceptedCents, $e['id']]);
-    q('INSERT INTO comments(entry_id, user_id, body, created_at) VALUES(?, ?, ?, ?)', [$e['id'], $uid, 'Contestation : ' . $reason, now()]);
     audit('entry.contest', 'entry', (int)$e['id'], [
         'libelle' => $e['label'], 'montant' => money((int)$e['amount_cents']),
         'montant_accepte' => money($acceptedCents), 'motif' => $reason,
@@ -580,4 +574,12 @@ function apply_to_current_month(callable $match, string $reason): int
 function paid_word(array $e): string
 {
     return !empty($e['recette']) ? 'perçu par' : 'payé par';
+}
+
+/** Dernier motif de contestation d'une ligne (gardé dans le journal, pas dans les commentaires). */
+function contest_reason(int $entryId): string
+{
+    $d = q("SELECT details FROM audit_log WHERE entity = 'entry' AND entity_id = ? AND action = 'entry.contest' ORDER BY id DESC LIMIT 1", [$entryId])->fetchColumn();
+    $d = $d ? json_decode($d, true) : [];
+    return (string)($d['motif'] ?? '');
 }

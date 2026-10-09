@@ -331,6 +331,7 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
             Contestée par <?= h($dn) ?> : n'accepte que <strong><?= money((int)$e['accepted_cents']) ?></strong> sur <?= money((int)$e['amount_cents']) ?>. Ajustement accepté par <?= h(user_name(other_party((int)$e['disputed_by']))) ?>.
           <?php else: ?>
             Contestée par <?= h($dn) ?> : n'accepte que <strong><?= money((int)$e['accepted_cents']) ?></strong> sur <?= money((int)$e['amount_cents']) ?>, soit <strong><?= money($ls['litige']) ?></strong> en litige.
+            <?php if ($mot = contest_reason($id)): ?><br>Motif : « <?= h($mot) ?> »<?php endif; ?>
           <?php endif; ?>
         </div>
       <?php endif; ?>

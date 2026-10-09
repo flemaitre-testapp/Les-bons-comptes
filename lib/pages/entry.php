@@ -28,9 +28,6 @@ if (is_post()) {
             $e['status'] = 'en_attente';
         }
         set_ok($e, (int)$me['id'], $action === 'validate');
-        if ($comment !== '') {
-            q('INSERT INTO comments(entry_id, user_id, body, created_at) VALUES(?, ?, ?, ?)', [$id, $me['id'], $comment, now()]);
-        }
         flash('ok', $action === 'validate' ? 'Ligne validée.' : 'Validation retirée.');
     } elseif ($action === 'contest' && !$e['cancelled'] && $e['kind'] === 'depense') {
         $acc = parse_money(post('accepted') === '' ? '0' : post('accepted'));

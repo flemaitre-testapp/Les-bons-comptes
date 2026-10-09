@@ -23,13 +23,18 @@ if (!in_array($page, ['login', 'setup'], true)) {
     $me = current_user();
     try {
         upgrade_oct2026();
-        reset_comments_once();
     } catch (Throwable $ex) {
         error_log((string)$ex);
         @file_put_contents(DATA_DIR . '/erreurs.log', '[' . date('Y-m-d H:i:s') . '] reprise octobre : ' . $ex . "\n\n", FILE_APPEND);
         if (db()->inTransaction()) {
             db()->rollBack();
         }
+    }
+    try {
+        reset_comments_once();
+    } catch (Throwable $ex) {
+        error_log((string)$ex);
+        @file_put_contents(DATA_DIR . '/erreurs.log', '[' . date('Y-m-d H:i:s') . '] remise à zéro des commentaires : ' . $ex . "\n\n", FILE_APPEND);
     }
     if ($me['must_change_pw'] && !in_array($page, ['account', 'logout'], true)) {
         flash('info', 'Choisis ton mot de passe personnel pour continuer.');
