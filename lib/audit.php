@@ -101,6 +101,7 @@ const AUDIT_LABELS = [
     'proposal.refuse' => 'Proposition refusée',
     'proposal.withdraw' => 'Proposition retirée',
     'entry.cancel' => 'Opération annulée',
+    'entry.delete' => 'Ligne supprimée par l\'administrateur',
     'entry.comment' => 'Commentaire',
     'recurring.create' => 'Charge récurrente créée',
     'recurring.update' => 'Charge récurrente modifiée',

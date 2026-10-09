@@ -72,6 +72,29 @@ if (is_post()) {
                 contest_entry($e, $uid, $acc, $reason);
                 flash('ok', 'Contestation enregistrée. Le calcul tient compte du montant que tu acceptes ; l\'écart reste affiché en litige.');
             }
+        } elseif ($action === 'delete_line' && is_admin()) {
+            $info = ['libelle' => $e['label'], 'montant' => money((int)$e['amount_cents']), 'date' => fdate($e['op_date']),
+                'paye_par' => user_name((int)$e['paid_by']), 'raison' => $reason];
+            q('UPDATE entries SET replaces = NULL WHERE replaces = ?', [$e['id']]);
+            q('DELETE FROM comments WHERE entry_id = ?', [$e['id']]);
+            q('DELETE FROM proposals WHERE entry_id = ?', [$e['id']]);
+            q('DELETE FROM entries WHERE id = ?', [$e['id']]);
+            if ($e['receipt'] && is_file(UPLOAD_DIR . '/' . basename($e['receipt']))
+                && !q('SELECT 1 FROM entries WHERE receipt = ?', [$e['receipt']])->fetchColumn()) {
+                @unlink(UPLOAD_DIR . '/' . basename($e['receipt']));
+            }
+            audit('entry.delete', 'entry', (int)$e['id'], $info);
+            flash('ok', '« ' . $e['label'] . ' » supprimée.');
+            $anchor = 0;
+        } elseif ($action === 'delete_line' && is_admin()) {
+            // Suppression définitive par l'administrateur : la ligne disparaît de l'appli
+            q('UPDATE entries SET replaces = NULL WHERE replaces = ?', [$e['id']]);
+            q('DELETE FROM comments WHERE entry_id = ?', [$e['id']]);
+            q('DELETE FROM proposals WHERE entry_id = ?', [$e['id']]);
+            q('DELETE FROM entries WHERE id = ?', [$e['id']]);
+            audit('entry.delete', 'entry', (int)$e['id'], ['libelle' => $e['label'], 'montant' => money((int)$e['amount_cents'])]);
+            flash('ok', '« ' . $e['label'] . ' » supprimée.');
+            $anchor = 0;
         } elseif ($action === 'cancel_line' && can_cancel($e, $me)) {
             if ($reason === '') {
                 flash('err', 'Indique pourquoi tu annules cette ligne.');
@@ -386,12 +409,25 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
         <?php endif; ?>
       </div>
       <details class="row-actions">
-        <summary>Commenter<?= can_adjust($e, $me) ? (is_admin() ? ', ajuster' : ', proposer un ajustement') : '' ?><?= $isDep && !$disputed ? ', contester' : '' ?><?= can_cancel($e, $me) ? ', annuler' : '' ?></summary>
+        <summary>Commenter<?= can_adjust($e, $me) ? (is_admin() ? ', ajuster' : ', proposer un ajustement') : '' ?><?= $isDep && !$disputed ? ', contester' : '' ?><?= can_cancel($e, $me) ? ', annuler' : '' ?><?= is_admin() ? ', supprimer' : '' ?></summary>
         <?php if (can_cancel($e, $me)): ?>
           <form method="post" class="inline-form cancel-line" data-confirm="Annuler « <?= h($e['label']) ?> » (<?= h(money((int)$e['amount_cents'])) ?>) ? La ligne ne sera plus comptée, l'annulation restera dans le journal.">
             <?= csrf_field() ?><input type="hidden" name="action" value="cancel_line"><input type="hidden" name="id" value="<?= $id ?>">
             <input name="reason" maxlength="300" placeholder="Raison (ex. saisi en double)" required>
             <button class="btn btn-warn small">Annuler cette ligne</button>
+          </form>
+        <?php endif; ?>
+        <?php if (is_admin()): ?>
+          <form method="post" class="inline-form" data-confirm="Supprimer définitivement « <?= h($e['label']) ?> » (<?= h(money((int)$e['amount_cents'])) ?>) ? Elle disparaîtra de l'appli.">
+            <?= csrf_field() ?><input type="hidden" name="action" value="delete_line"><input type="hidden" name="id" value="<?= $id ?>">
+            <button class="btn btn-warn small">🗑 Supprimer définitivement</button>
+          </form>
+        <?php endif; ?>
+        <?php if (is_admin()): ?>
+          <form method="post" class="inline-form cancel-line" data-confirm="Supprimer définitivement « <?= h($e['label']) ?> » (<?= h(money((int)$e['amount_cents'])) ?>) ? La ligne disparaît de l'appli, la suppression est notée dans le journal.">
+            <?= csrf_field() ?><input type="hidden" name="action" value="delete_line"><input type="hidden" name="id" value="<?= $id ?>">
+            <input name="reason" maxlength="300" placeholder="Raison (facultatif)">
+            <button class="btn btn-warn small">Supprimer définitivement</button>
           </form>
         <?php endif; ?>
         <form method="post" class="inline-form">
