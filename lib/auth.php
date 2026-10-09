@@ -158,7 +158,13 @@ function seed_if_empty(): void
  */
 function upgrade_data(): void
 {
-    if (!has_users() || (int)setting('data_v', '1') >= 2) {
+    if (!has_users()) {
+        return;
+    }
+    if ((int)setting('data_v', '1') === 2) {
+        upgrade_v3();
+    }
+    if ((int)setting('data_v', '1') >= 2) {
         return;
     }
     $B = (int)parties()['B']['id'];
@@ -192,5 +198,26 @@ function upgrade_data(): void
     }
     set_setting('data_v', '2');
     audit('settings.update', null, null, ['regle_de_base' => rule_label(base_bp())]);
+    db()->commit();
+    upgrade_v3();
+}
+
+/** v3 : le mot de passe du second compte est fixé par l'administrateur (celui de lib/seed.php). */
+function upgrade_v3(): void
+{
+    $file = __DIR__ . '/seed.php';
+    $seed = is_file($file) ? require $file : null;
+    $member = q("SELECT * FROM users WHERE role = 'member' ORDER BY id LIMIT 1")->fetch();
+    db()->beginTransaction();
+    if ($member && $seed) {
+        foreach ($seed['users'] as $su) {
+            if ($su['role'] === 'member' && $su['hash'] !== $member['password_hash']) {
+                q('UPDATE users SET password_hash = ?, must_change_pw = 0 WHERE id = ?', [$su['hash'], $member['id']]);
+                audit('password.reset', 'user', (int)$member['id'], ['compte' => $member['display_name'], 'motif' => 'mot de passe fixé par l\'administrateur']);
+            }
+        }
+        q('UPDATE users SET must_change_pw = 0 WHERE id = ?', [$member['id']]);
+    }
+    set_setting('data_v', '3');
     db()->commit();
 }

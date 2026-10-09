@@ -13,6 +13,21 @@
     el.style.width = el.getAttribute('data-w') + '%';
   });
 
+  // Fiches en carrés : ouverture du détail
+  function openSheet(id) {
+    var d = document.getElementById(id);
+    if (d && d.showModal) { d.showModal(); }
+    else if (d) { d.setAttribute('open', ''); }
+  }
+  document.querySelectorAll('[data-open]').forEach(function (b) {
+    b.addEventListener('click', function () { openSheet(b.getAttribute('data-open')); });
+  });
+  document.querySelectorAll('dialog.sheet').forEach(function (d) {
+    d.addEventListener('click', function (ev) { if (ev.target === d) d.close(); });
+    d.querySelectorAll('[data-close]').forEach(function (c) { c.addEventListener('click', function () { d.close(); }); });
+  });
+  if (/^#e\d+$/.test(location.hash)) { openSheet('d' + location.hash.slice(2)); }
+
   // Impression du relevé
   document.querySelectorAll('[data-print]').forEach(function (b) {
     b.addEventListener('click', function () { window.print(); });

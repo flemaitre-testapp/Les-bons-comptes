@@ -20,16 +20,18 @@ if (is_post()) {
             flash('ok', 'Prénom mis à jour.');
         }
         redirect('users');
-    } elseif ($action === 'reset' && $uid !== (int)$me['id']) {
-        $alphabet = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-        $tempPw = '';
-        for ($i = 0; $i < 14; $i++) {
-            $tempPw .= $alphabet[random_int(0, strlen($alphabet) - 1)];
+    } elseif ($action === 'setpw' && $uid !== (int)$me['id']) {
+        $pw = post('pw');
+        if ($p = password_problem($pw, $pw)) {
+            flash('err', $p);
+        } elseif (password_taken($pw, $uid)) {
+            flash('err', 'Ce mot de passe est déjà utilisé par un autre compte.');
+        } else {
+            set_password($uid, $pw, false);
+            audit('password.reset', 'user', $uid, ['compte' => $u['display_name'], 'motif' => 'mot de passe fixé par l\'administrateur']);
+            flash('ok', 'Mot de passe de ' . $u['display_name'] . ' mis à jour.');
         }
-        set_password($uid, $tempPw, true);
-        q('UPDATE users SET pw_reset_notice = 1 WHERE id = ?', [$uid]);
-        audit('password.reset', 'user', $uid, ['compte' => $u['display_name']]);
-        $tempFor = $u['display_name'];
+        redirect('users');
     }
 }
 
@@ -53,11 +55,12 @@ layout_start('Comptes', 'admin');
       </form>
       <p class="muted"><?= $u['role'] === 'admin' ? 'Administrateur' : 'Membre' ?>
         · Dernière connexion : <?= $u['last_login_at'] ? fdate($u['last_login_at'], true) : 'jamais' ?>
-        <?= $u['must_change_pw'] ? ' · <em>mot de passe provisoire en attente de changement</em>' : '' ?></p>
+</p>
       <?php if ((int)$u['id'] !== (int)$me['id']): ?>
-        <form method="post" data-confirm="Générer un nouveau mot de passe provisoire pour <?= h($u['display_name']) ?> ? L'action sera visible dans le journal.">
-          <?= csrf_field() ?><input type="hidden" name="action" value="reset"><input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
-          <button class="btn btn-warn small">Réinitialiser son mot de passe</button>
+        <form method="post" class="inline-form" data-confirm="Changer le mot de passe de <?= h($u['display_name']) ?> ? L'action sera visible dans le journal.">
+          <?= csrf_field() ?><input type="hidden" name="action" value="setpw"><input type="hidden" name="id" value="<?= (int)$u['id'] ?>">
+          <input name="pw" placeholder="Nouveau mot de passe" minlength="<?= PW_MIN ?>" autocomplete="off" required>
+          <button class="btn btn-warn small">Changer son mot de passe</button>
         </form>
       <?php else: ?>
         <p><a href="<?= url('account') ?>">Changer mon mot de passe</a></p>

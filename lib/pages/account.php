@@ -1,7 +1,7 @@
 <?php
 $me = current_user();
 $errors = [];
-if (is_post()) {
+if (is_post() && $me['role'] === 'admin') {
     check_csrf();
     if (!password_verify(post('current'), $me['password_hash'])) {
         $errors[] = 'Mot de passe actuel incorrect.';
@@ -26,10 +26,11 @@ layout_start('Mon compte', 'account');
     <li><span>Prénom</span><strong><?= h($me['display_name']) ?></strong></li>
     <li><span>Rôle</span><strong><?= $me['role'] === 'admin' ? 'Administrateur' : 'Membre' ?></strong></li>
   </ul>
-  <h2><?= $me['must_change_pw'] ? 'Choisis ton mot de passe' : 'Changer de mot de passe' ?></h2>
-  <?php if ($me['must_change_pw']): ?>
-    <p class="muted">Le mot de passe que tu as reçu est provisoire. Choisis-en un que toi seul·e connais (<?= PW_MIN ?> caractères minimum).</p>
-  <?php endif; ?>
+  <?php if ($me['role'] !== 'admin'): ?>
+    <p class="muted">Ton mot de passe est géré par l'administrateur.</p>
+  </section>
+  <?php layout_end(); return; endif; ?>
+  <h2>Changer de mot de passe</h2>
   <?php foreach ($errors as $e): ?><div class="flash flash-err"><?= h($e) ?></div><?php endforeach; ?>
   <form method="post" class="form">
     <?= csrf_field() ?>

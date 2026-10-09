@@ -24,6 +24,18 @@ if (is_post()) {
     $action = post('action');
     $reason = post('reason');
     $anchor = (int)post('id');
+    if ($action === 'ok_all') {
+        $col = ok_col($uid);
+        db()->beginTransaction();
+        $n = 0;
+        foreach (q("SELECT * FROM entries WHERE cancelled = 0 AND $col = 0 AND substr(op_date, 1, 7) = ?", [$m])->fetchAll() as $row) {
+            set_ok($row, $uid, true);
+            $n++;
+        }
+        db()->commit();
+        flash('ok', $n . ' ligne(s) validée(s).');
+        redirect('dashboard', ['m' => $m]);
+    }
     if ($e && !$e['cancelled']) {
         db()->beginTransaction();
         if ($action === 'ok') {
@@ -169,7 +181,38 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
 <section class="card flush">
   <div class="card-head pad"><h2>Lignes du mois</h2><span class="muted small-txt"><?= $okBoth ?>/<?= count($rows) ?> validées par les deux</span></div>
   <div class="pad-x"><?= legend() ?></div>
+  <?php if ($todoMe): ?>
+    <form method="post" class="pad-x valid-all" data-confirm="Valider les <?= $todoMe ?> ligne(s) de <?= h(month_label($m)) ?> que tu n'as pas encore validées ?">
+      <?= csrf_field() ?><input type="hidden" name="action" value="ok_all"><input type="hidden" name="id" value="0">
+      <button class="btn small">✓ Tout valider (<?= $todoMe ?>)</button>
+    </form>
+  <?php endif; ?>
   <?php if (!$rows): ?><p class="empty">Aucune ligne ce mois-ci.</p><?php endif; ?>
+  <div class="tiles">
+  <?php foreach ($rows as $e):
+      $id0 = (int)$e['id'];
+      $isDep0 = $e['kind'] === 'depense';
+      $ls0 = $isDep0 ? line_shares($e) : null;
+      $hasProp = $isDep0 && pending_proposal($id0);
+      $nbC = count($comments[$id0] ?? []);
+      $contested0 = $e['disputed_by'] !== null && !$e['dispute_ok']; ?>
+    <button type="button" class="tile tone-<?= entry_tone($e) ?><?= $contested0 ? ' t-ko' : '' ?><?= $hasProp ? ' t-prop' : '' ?>" data-open="d<?= $id0 ?>">
+      <span class="t-label"><?= h($e['label']) ?></span>
+      <span class="t-amt"><?= money((int)$e['amount_cents']) ?></span>
+      <?php if ($isDep0): ?>
+        <span class="t-split"><?= h(mb_substr($nameA, 0, 1)) ?> <?= money($ls0['a']) ?><br><?= h(mb_substr($nameB, 0, 1)) ?> <?= money($ls0['b']) ?></span>
+      <?php else: ?>
+        <span class="t-split"><?= h(user_name((int)$e['paid_by'])) ?> → <?= h(user_name((int)$e['beneficiary'])) ?></span>
+      <?php endif; ?>
+      <span class="t-foot">
+        <span class="dot <?= $e['ok_a'] ? 'on' : '' ?>" title="<?= h($nameA) ?>"><?= h(mb_substr($nameA, 0, 1)) ?></span>
+        <span class="dot <?= $e['ok_b'] ? 'on' : '' ?>" title="<?= h($nameB) ?>"><?= h(mb_substr($nameB, 0, 1)) ?></span>
+        <?php if ($nbC): ?><span class="t-ic">💬<?= $nbC ?></span><?php endif; ?>
+        <?php if ($hasProp): ?><span class="t-ic" title="Proposition en attente">✎</span><?php endif; ?>
+      </span>
+    </button>
+  <?php endforeach; ?>
+  </div>
   <?php foreach ($rows as $e):
       $id = (int)$e['id'];
       $isDep = $e['kind'] === 'depense';
@@ -177,6 +220,8 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
       $ls = $isDep ? line_shares($e) : null;
       $disputed = $e['disputed_by'] !== null;
       $cs = $comments[$id] ?? []; ?>
+    <dialog class="sheet" id="d<?= $id ?>">
+    <button type="button" class="sheet-close" data-close aria-label="Fermer">×</button>
     <div class="mrow tone-row tone-<?= entry_tone($e) ?><?= $disputed && !$e['dispute_ok'] ? ' contested' : '' ?>" id="e<?= $id ?>">
       <a class="mrow-head" href="<?= url('entry', ['id' => $id]) ?>">
         <span class="mrow-title"><?= h($e['label']) ?><?= $e['receipt'] ? ' 📎' : '' ?><?= $e['replaces'] ? ' <span class="tag">ajustée</span>' : '' ?></span>
@@ -277,6 +322,7 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
         <?php endif; ?>
       </details>
     </div>
+    </dialog>
   <?php endforeach; ?>
 </section>
 
