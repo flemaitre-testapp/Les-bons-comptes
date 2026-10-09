@@ -79,7 +79,8 @@ function balance(string $mode = 'all', ?string $until = null, ?string $from = nu
                 $r['litige'][(int)$e['disputed_by']] += $ls['litige'];
             }
             $r['total'] += $amt;
-            $fairBp = $e['fair_a_bp'] !== null ? (int)$e['fair_a_bp'] : $incomeBp;
+            // Mois passés : revenus connus à la saisie. Mois en cours et suivants : revenus actuels.
+            $fairBp = ($e['fair_a_bp'] !== null && substr($e['op_date'], 0, 7) < date('Y-m')) ? (int)$e['fair_a_bp'] : $incomeBp;
             // Une dépense perso reste à 100 % à son bénéficiaire, revenus ou pas
             if (in_array((int)$e['part_a_bp'], [0, 10000], true)) {
                 $fairBp = (int)$e['part_a_bp'];
@@ -541,4 +542,23 @@ function split_chips(string $current, string $customVal = ''): string
         $html .= '<label><input type="radio" name="mode" value="' . $k . '"' . ($current === $k ? ' checked' : '') . '><span>' . h($l) . '</span></label>';
     }
     return $html . '<input name="part_a" class="pill-pct" value="' . h($customVal) . '" placeholder="% ' . h($A) . '" inputmode="decimal" title="Part de ' . h($A) . ' si « Autre »"></div>';
+}
+
+/**
+ * Répercute sur le mois en cours une modification faite dans les réglages :
+ * chaque ligne concernée est ajustée (l'ancienne version reste dans l'historique).
+ * $match(ligne) retourne [montant, part A] voulus, ou null pour ne pas toucher.
+ */
+function apply_to_current_month(callable $match, string $reason): int
+{
+    $n = 0;
+    $rows = q("SELECT * FROM entries WHERE cancelled = 0 AND kind = 'depense' AND substr(op_date, 1, 7) >= ?", [date('Y-m')])->fetchAll();
+    foreach ($rows as $e) {
+        $want = $match($e);
+        if ($want && ($want[0] !== (int)$e['amount_cents'] || $want[1] !== (int)$e['part_a_bp'])) {
+            adjust_entry($e, $want[0], $want[1], $reason, false);
+            $n++;
+        }
+    }
+    return $n;
 }

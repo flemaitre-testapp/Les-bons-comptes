@@ -28,8 +28,18 @@ if (is_post()) {
             }
             if ($oldBase !== $base) {
                 audit('settings.update', null, null, ['regle_de_base' => rule_label($oldBase) . ' → ' . rule_label($base)]);
+                db()->beginTransaction();
+                q("UPDATE recurring SET part_a_bp = ? WHERE mode = 'custom' AND part_a_bp = ?", [$base, $oldBase]);
+                $nb = apply_to_current_month(
+                    fn($e) => (int)$e['part_a_bp'] === $oldBase ? [(int)$e['amount_cents'], $base] : null,
+                    'Règle de base modifiée : ' . rule_label($oldBase) . ' → ' . rule_label($base)
+                );
+                db()->commit();
+                if ($nb) {
+                    flash('info', $nb . ' ligne(s) de ' . month_label(date('Y-m')) . ' recalculée(s) avec la nouvelle règle.');
+                }
             }
-            flash('ok', 'Réglages enregistrés. Les opérations déjà saisies gardent leur calcul d\'origine.');
+            flash('ok', 'Réglages enregistrés. Le mois en cours est recalculé, les mois passés gardent leur calcul.');
         }
     } elseif ($action === 'cat_add') {
         $name = post('name');
@@ -80,7 +90,7 @@ layout_start('Admin', 'admin');
       <p class="hint">Part selon revenus : <strong><?= h($A['display_name']) ?> <?= pct($ib) ?></strong>, <strong><?= h($B['display_name']) ?> <?= pct(10000 - $ib) ?></strong>.</p>
     <?php endif; ?>
     <label>Règle de base : part de <?= h($A['display_name']) ?> (%) <input name="base" value="<?= h(str_replace('.', ',', (string)(base_bp() / 100))) ?>" inputmode="decimal" required></label>
-    <p class="hint">Règle actuelle : <?= h($A['display_name']) ?> <?= pct(base_bp()) ?>, <?= h($B['display_name']) ?> <?= pct(10000 - base_bp()) ?>. Proposée par défaut pour chaque dépense. L'appli calcule en parallèle la part de chacun selon les revenus. Un changement ne modifie pas les dépenses déjà saisies et est inscrit au journal.</p>
+    <p class="hint">Règle actuelle : <?= h($A['display_name']) ?> <?= pct(base_bp()) ?>, <?= h($B['display_name']) ?> <?= pct(10000 - base_bp()) ?>. Proposée par défaut pour chaque dépense. L'appli calcule en parallèle la part de chacun selon les revenus. Un changement recalcule le mois en cours (les mois passés ne bougent pas) et est inscrit au journal.</p>
     <button class="btn small">Enregistrer</button>
   </form>
 </section>

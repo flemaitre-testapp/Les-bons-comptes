@@ -33,13 +33,20 @@ if (is_post()) {
         $old = q('SELECT * FROM recurring WHERE id = ?', [$rid])->fetch();
         if ($old && $valid) {
             $active = post('active') === '1' ? 1 : 0;
+            db()->beginTransaction();
             q('UPDATE recurring SET label = ?, category_id = ?, amount_cents = ?, paid_by = ?, mode = ?, part_a_bp = ?, day_of_month = ?, active = ? WHERE id = ?',
                 [$label, $cat, $amount, $payer, $mode, $bp, $day, $active, $rid]);
+            $new = q('SELECT * FROM recurring WHERE id = ?', [$rid])->fetch();
+            $nb = apply_to_current_month(
+                fn($e) => (int)$e['recurring_id'] === $rid ? [(int)$new['amount_cents'], rec_bp($new)] : null,
+                'Charge mensuelle modifiée dans les réglages'
+            );
             audit('recurring.update', 'recurring', $rid, [
                 'avant' => $old['label'] . ' ' . money((int)$old['amount_cents']) . ', payé par ' . user_name((int)$old['paid_by']) . ', ' . rec_label($old['mode'], (int)$old['part_a_bp']) . ($old['active'] ? '' : ', arrêtée'),
                 'apres' => $label . ' ' . money($amount) . ', payé par ' . user_name($payer) . ', ' . rec_label($mode, $bp) . ($active ? '' : ', arrêtée'),
             ]);
-            flash('ok', 'Charge mise à jour (les mois déjà passés ne changent pas).');
+            db()->commit();
+            flash('ok', 'Charge mise à jour' . ($nb ? ' et répercutée sur ' . month_label(date('Y-m')) : '') . '. Les mois passés ne changent pas.');
         } else {
             flash('err', 'Champs invalides.');
         }
