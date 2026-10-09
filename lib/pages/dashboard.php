@@ -72,6 +72,14 @@ if (is_post()) {
                 contest_entry($e, $uid, $acc, $reason);
                 flash('ok', 'Contestation enregistrée. Le calcul tient compte du montant que tu acceptes ; l\'écart reste affiché en litige.');
             }
+        } elseif ($action === 'cancel_line' && can_cancel($e, $me)) {
+            if ($reason === '') {
+                flash('err', 'Indique pourquoi tu annules cette ligne.');
+            } else {
+                q('UPDATE entries SET cancelled = 1, cancelled_by = ?, cancelled_at = ?, cancel_reason = ? WHERE id = ?', [$uid, now(), $reason, $e['id']]);
+                audit('entry.cancel', 'entry', (int)$e['id'], ['raison' => $reason, 'libelle' => $e['label'], 'montant' => money((int)$e['amount_cents'])]);
+                flash('ok', '« ' . $e['label'] . ' » annulée. Elle n\'est plus comptée, l\'annulation reste visible dans le journal.');
+            }
         } elseif ($action === 'withdraw' && (int)$e['disputed_by'] === $uid) {
             withdraw_contest($e, $uid);
         } elseif ($action === 'accept' && $e['disputed_by'] !== null && (int)$e['disputed_by'] !== $uid) {
@@ -378,7 +386,14 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
         <?php endif; ?>
       </div>
       <details class="row-actions">
-        <summary>Commenter<?= can_adjust($e, $me) ? (is_admin() ? ', ajuster' : ', proposer un ajustement') : '' ?><?= $isDep && !$disputed ? ', contester' : '' ?></summary>
+        <summary>Commenter<?= can_adjust($e, $me) ? (is_admin() ? ', ajuster' : ', proposer un ajustement') : '' ?><?= $isDep && !$disputed ? ', contester' : '' ?><?= can_cancel($e, $me) ? ', annuler' : '' ?></summary>
+        <?php if (can_cancel($e, $me)): ?>
+          <form method="post" class="inline-form cancel-line" data-confirm="Annuler « <?= h($e['label']) ?> » (<?= h(money((int)$e['amount_cents'])) ?>) ? La ligne ne sera plus comptée, l'annulation restera dans le journal.">
+            <?= csrf_field() ?><input type="hidden" name="action" value="cancel_line"><input type="hidden" name="id" value="<?= $id ?>">
+            <input name="reason" maxlength="300" placeholder="Raison (ex. saisi en double)" required>
+            <button class="btn btn-warn small">Annuler cette ligne</button>
+          </form>
+        <?php endif; ?>
         <form method="post" class="inline-form">
           <?= csrf_field() ?><input type="hidden" name="action" value="comment"><input type="hidden" name="id" value="<?= $id ?>">
           <input name="reason" maxlength="2000" placeholder="Commentaire..." required>
