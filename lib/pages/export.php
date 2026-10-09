@@ -15,7 +15,7 @@ $num = fn(int $c) => number_format($c / 100, 2, ',', '');
 
 if ($type === 'journal') {
     $put(['N°', 'Date et heure', 'Utilisateur', 'Action', 'Objet', 'Détails', 'IP', 'Empreinte précédente', 'Empreinte']);
-    foreach (q('SELECT * FROM audit_log ORDER BY id') as $r) {
+    foreach (q('SELECT * FROM audit_log WHERE ' . audit_visibility_sql() . ' ORDER BY id') as $r) {
         $put([$r['id'], $r['ts'], user_name($r['user_id'] ? (int)$r['user_id'] : null), AUDIT_LABELS[$r['action']] ?? $r['action'],
             $r['entity'] ? $r['entity'] . ' #' . $r['entity_id'] : '', (string)$r['details'], $r['ip'], $r['prev_hash'], $r['hash']]);
     }

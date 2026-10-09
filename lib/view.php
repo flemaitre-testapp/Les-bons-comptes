@@ -52,7 +52,7 @@ function layout_end(): void
 </main>
 <?php if ($u): ?>
 <a class="fab" href="<?= url('new') ?>" aria-label="Ajouter une dépense">+</a>
-<footer class="foot">Connecté·e : <?= h($u['display_name']) ?> · <a href="<?= url('account') ?>">Mon compte</a> · <a href="<?= url('audit') ?>">Journal</a><br>Toutes les actions sont tracées dans le journal, visible par les deux.</footer>
+<footer class="foot">Connecté·e : <?= h($u['display_name']) ?> · <a href="<?= url('account') ?>">Mon compte</a> · <a href="<?= url('audit') ?>">Journal</a><br>Toutes les actions sont tracées dans le journal.</footer>
 <?php endif; ?>
 <script src="assets/app.js?v=<?= (string)@filemtime(APP_ROOT . '/assets/app.js') ?>"></script>
 </body>

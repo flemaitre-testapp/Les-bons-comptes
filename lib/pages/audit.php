@@ -3,8 +3,9 @@
 $integrity = verify_integrity();
 $page = max(1, (int)($_GET['page'] ?? 1));
 $per = 100;
-$total = (int)q('SELECT COUNT(*) FROM audit_log')->fetchColumn();
-$rows = q('SELECT * FROM audit_log ORDER BY id DESC LIMIT ? OFFSET ?', [$per, ($page - 1) * $per])->fetchAll();
+$vis = audit_visibility_sql();
+$total = (int)q("SELECT COUNT(*) FROM audit_log WHERE $vis")->fetchColumn();
+$rows = q("SELECT * FROM audit_log WHERE $vis ORDER BY id DESC LIMIT ? OFFSET ?", [$per, ($page - 1) * $per])->fetchAll();
 
 layout_start('Journal', 'audit');
 ?>

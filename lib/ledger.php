@@ -586,3 +586,12 @@ function contest_reason(int $entryId): string
     $d = $d ? json_decode($d, true) : [];
     return (string)($d['motif'] ?? '');
 }
+
+/** Filtre SQL du journal : les lignes supprimées par l'admin ne sont visibles que par lui. */
+function audit_visibility_sql(): string
+{
+    if (is_admin()) {
+        return '1 = 1';
+    }
+    return "NOT (action = 'entry.delete' OR (entity = 'entry' AND entity_id IS NOT NULL AND entity_id NOT IN (SELECT id FROM entries)))";
+}
