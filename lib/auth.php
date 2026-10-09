@@ -232,8 +232,25 @@ function upgrade_oct2026(): void
     if (!is_admin()) {
         return;
     }
+    $A = party_a_id();
+    $B = (int)parties()['B']['id'];
     if (setting('data_oct2026') === '1') {
         // Voyage Rose : ponctuel (octobre seulement), pas une charge mensuelle
+        if (setting('data_oct2026d') !== '1') {
+            // Coiffeur filles : payé par Julie, à la charge de Florian (100 %)
+            db()->beginTransaction();
+            foreach (q("SELECT * FROM entries WHERE cancelled = 0 AND kind = 'depense' AND label = 'Coiffeur filles' AND substr(op_date, 1, 7) = '2026-10'")->fetchAll() as $e) {
+                if ((int)$e['paid_by'] !== $B || (int)$e['part_a_bp'] !== 10000) {
+                    $why = 'Coiffeur payé par Julie, à la charge de Florian';
+                    q('UPDATE entries SET cancelled = 1, cancelled_by = ?, cancelled_at = ?, cancel_reason = ? WHERE id = ?', [$A, now(), $why, $e['id']]);
+                    audit('entry.cancel', 'entry', (int)$e['id'], ['raison' => $why]);
+                    create_entry(['kind' => 'depense', 'op_date' => $e['op_date'], 'label' => 'Coiffeur filles', 'category_id' => $e['category_id'],
+                        'amount_cents' => (int)$e['amount_cents'], 'paid_by' => $B, 'part_a_bp' => 10000, 'notes' => $why, 'replaces' => (int)$e['id']]);
+                }
+            }
+            set_setting('data_oct2026d', '1');
+            db()->commit();
+        }
         if (setting('data_oct2026c') !== '1') {
             // Cadeau copine Rose et coiffeur filles : 100 % Florian
             db()->beginTransaction();
@@ -323,7 +340,7 @@ function upgrade_oct2026(): void
         ['Cadeau copine Rose', 1000, 10000, $B, 'Cadeaux', 0, ''],
         ['Voyage Rose', 8500, 5000, $B, 'Voyages & sorties', 0, ''],
         ['Trajet Paris', 510, 10000, $B, 'Transport', 0, ''],
-        ['Coiffeur filles', 1500, 10000, $A, 'Divers', 0, ''],
+        ['Coiffeur filles', 1500, 10000, $B, 'Divers', 0, 'Payé par Julie, à la charge de Florian'],
         ['PAJE (perçue par Julie)', 19816, 5000, $B, 'Divers', 1, 'Allocation de 198,16 € perçue par Julie, à partager 50/50 : 99,08 € reviennent à Florian.'],
     ];
     foreach ($once as [$label, $amt, $bp, $payer, $c, $rec, $note]) {
@@ -342,6 +359,7 @@ function upgrade_oct2026(): void
     set_setting('data_oct2026', '1');
     set_setting('data_oct2026b', '1');
     set_setting('data_oct2026c', '1');
+    set_setting('data_oct2026d', '1');
     db()->commit();
 }
 
