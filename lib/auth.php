@@ -229,7 +229,19 @@ function upgrade_v3(): void
  */
 function upgrade_oct2026(): void
 {
-    if (!is_admin() || setting('data_oct2026') === '1') {
+    if (!is_admin()) {
+        return;
+    }
+    if (setting('data_oct2026') === '1') {
+        // Voyage Rose : ponctuel (octobre seulement), pas une charge mensuelle
+        if (setting('data_oct2026b') !== '1') {
+            $r = q("SELECT * FROM recurring WHERE label = 'Voyage Rose' AND active = 1")->fetch();
+            if ($r) {
+                q('UPDATE recurring SET active = 0 WHERE id = ?', [$r['id']]);
+                audit('recurring.update', 'recurring', (int)$r['id'], ['libelle' => 'Voyage Rose', 'apres' => 'octobre seulement, plus de charge mensuelle']);
+            }
+            set_setting('data_oct2026b', '1');
+        }
         return;
     }
     $A = party_a_id();
@@ -249,7 +261,6 @@ function upgrade_oct2026(): void
         ['Taxe foncière', ['Foncier'], 15600, 4000, $B, 'Impôts & taxes'],
         ['Deezer', [], 1999, 5000, $B, 'Abonnements'],
         ['Assurance GAV', [], 3332, 4000, $B, 'Assurances'],
-        ['Voyage Rose', [], 8500, 5000, $B, 'Voyages & sorties'],
         ['Moto', [], 2929, 10000, $B, 'Transport'],
         ['Assurance emprunteur', [], 1848, 10000, $B, 'Assurances'],
     ];
@@ -291,13 +302,13 @@ function upgrade_oct2026(): void
         }
     }
     db()->commit();
-    generate_recurring($m); // Voyage Rose, nouvelle charge
 
     // 3. Ponctuels d'octobre, paiement déjà fait, PAJE, coiffeur
     db()->beginTransaction();
     $once = [
         ['Tenue de danse Rose', 2427, 5000, $B, 'Vêtements & équipement', 0, ''],
         ['Cadeau copine Rose', 1000, 5000, $B, 'Cadeaux', 0, ''],
+        ['Voyage Rose', 8500, 5000, $B, 'Voyages & sorties', 0, ''],
         ['Trajet Paris', 510, 10000, $B, 'Transport', 0, ''],
         ['Coiffeur filles', 1500, 5000, $A, 'Divers', 0, ''],
         ['PAJE (perçue par Julie)', 19816, 5000, $B, 'Divers', 1, 'Allocation de 198,16 € perçue par Julie, à partager 50/50 : 99,08 € reviennent à Florian.'],
@@ -316,5 +327,6 @@ function upgrade_oct2026(): void
             'notes' => 'Déjà donné (32 €), enregistré le 09/10/2026.']);
     }
     set_setting('data_oct2026', '1');
+    set_setting('data_oct2026b', '1');
     db()->commit();
 }
