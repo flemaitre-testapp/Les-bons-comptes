@@ -76,6 +76,9 @@ function balance(string $mode = 'all', ?string $until = null, ?string $from = nu
             $r['paid'][$payer] -= $amt;
             $r['share'][$A] -= $ls['a'];
             $r['share'][$B] -= $ls['b'];
+            // même partage dans le calcul légal, sinon la recette fausserait la comparaison
+            $r['fair'][$A] -= $ls['a'];
+            $r['fair'][$B] -= $ls['b'];
             $r['recettes'] = ($r['recettes'] ?? 0) + $amt;
         } elseif ($e['kind'] === 'depense') {
             $r['paid'][$payer] += $amt;

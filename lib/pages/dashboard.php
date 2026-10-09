@@ -443,19 +443,26 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
 </section>
 
 <section class="card">
-  <h2>Votre règle et la règle légale</h2>
+  <h2>Règle appliquée et règle légale</h2>
+  <?php if ($ib !== null): ?>
   <table class="tbl cmp">
-    <thead><tr><th></th><th class="r"><?= h($nameA) ?></th><th class="r"><?= h($nameB) ?></th></tr></thead>
+    <thead><tr><th><?= h(ucfirst(month_label($m))) ?></th><th class="r"><?= h($nameA) ?></th><th class="r"><?= h($nameB) ?></th></tr></thead>
     <tbody>
-      <tr class="em"><td>Part selon votre règle</td><td class="r"><?= money($mb['share'][$A]) ?></td><td class="r"><?= money($mb['share'][$B]) ?></td></tr>
-      <?php if ($ib !== null): ?>
-      <tr><td>Part selon les revenus (<?= pct($ib) ?> / <?= pct(10000 - $ib) ?>)</td><td class="r"><?= money($mb['fair'][$A]) ?></td><td class="r"><?= money($mb['fair'][$B]) ?></td></tr>
-      <tr><td>Différence</td><td class="r"><?= money($mb['over'][$A], true) ?></td><td class="r"><?= money($mb['over'][$B], true) ?></td></tr>
-      <?php endif; ?>
+      <tr><td>Selon la règle appliquée<br><span class="muted small-txt">40/60 demandée par <?= h($nameB) ?>, 50/50 et perso selon les lignes</span></td>
+        <td class="r"><?= money($mb['share'][$A]) ?></td><td class="r"><?= money($mb['share'][$B]) ?></td></tr>
+      <tr><td>Selon la loi<br><span class="muted small-txt">au prorata des revenus : <?= money(income_of($A)) ?> / <?= money(income_of($B)) ?>, soit <?= pct($ib) ?> / <?= pct(10000 - $ib) ?></span></td>
+        <td class="r"><?= money($mb['fair'][$A]) ?></td><td class="r"><?= money($mb['fair'][$B]) ?></td></tr>
     </tbody>
   </table>
-  <?php if ($ib !== null && ($s = fairness_sentence($mb))): ?><p class="fair-line"><?= h($s) ?></p><?php endif; ?>
-  <p class="hint">Règle légale : chaque parent contribue aux frais des enfants à proportion de ses ressources (art. 371-2 du Code civil). Les dépenses perso restent à 100 % à leur bénéficiaire.</p>
+  <?php $ov = $mb['over'][$A]; $who = $ov >= 0 ? $nameA : $nameB; ?>
+  <div class="extra">
+    <span class="extra-label"><?= h($who) ?> prend en charge en plus ce mois-ci</span>
+    <span class="extra-amt">+ <?= money(abs($ov)) ?></span>
+    <?php $ovg = $global['over'][$A]; ?>
+    <span class="extra-sub">Depuis le début : <?= h($ovg >= 0 ? $nameA : $nameB) ?> + <?= money(abs($ovg)) ?></span>
+  </div>
+  <?php endif; ?>
+  <p class="hint">Loi : chaque parent contribue aux frais des enfants à proportion de ses ressources (art. 371-2 du Code civil). Les dépenses perso restent à 100 % à leur bénéficiaire.</p>
 </section>
 <p class="center"><a href="<?= url('entries') ?>">Rechercher dans toutes les dépenses</a> · <a href="<?= url('statement', ['from' => $first, 'to' => $last]) ?>">Relevé PDF du mois</a></p>
 <?php layout_end();

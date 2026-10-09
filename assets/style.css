@@ -423,3 +423,9 @@ dialog.sheet .mrow-head { padding-right: 2.6rem; }
 .t-check { position: absolute; top: 6px; right: 6px; width: 1.1rem; height: 1.1rem; border-radius: 50%; background: var(--ok); color: #fff;
   font-size: .7rem; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
 .tile.t-done .t-label { padding-right: 1.2rem; }
+
+.extra { display: flex; flex-direction: column; align-items: flex-start; gap: .15rem; margin-top: .8rem; padding: .8rem 1rem;
+  border-radius: 12px; background: color-mix(in srgb, var(--c-a) 12%, var(--surface)); border-left: 4px solid var(--c-a); }
+.extra-label { font-size: .85rem; font-weight: 600; }
+.extra-amt { font-size: 1.7rem; font-weight: 800; color: var(--c-a); font-variant-numeric: tabular-nums; }
+.extra-sub { font-size: .8rem; color: var(--muted); }
