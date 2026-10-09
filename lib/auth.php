@@ -348,11 +348,13 @@ function upgrade_oct2026(): void
 /** Remise à zéro des commentaires demandée par Florian le 09/10/2026 (une seule fois, après la reprise d'octobre). */
 function reset_comments_once(): void
 {
-    if (!is_admin() || setting('comments_reset_v3') === '1') {
+    if (!is_admin() || setting('comments_reset_v4') === '1') {
         return;
     }
-    $n = (int)q('SELECT COUNT(*) FROM comments')->fetchColumn();
+    $nc = (int)q('SELECT COUNT(*) FROM comments')->fetchColumn();
+    $np = (int)q('SELECT COUNT(*) FROM proposals')->fetchColumn();
     q('DELETE FROM comments');
-    set_setting('comments_reset_v3', '1');
-    audit('comments.reset', null, null, ['commentaires_supprimes' => $n]);
+    q('DELETE FROM proposals');
+    set_setting('comments_reset_v4', '1');
+    audit('comments.reset', null, null, ['commentaires_supprimes' => $nc, 'propositions_supprimees' => $np]);
 }
