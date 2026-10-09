@@ -280,7 +280,9 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
       $hasProp = $isDep0 && pending_proposal($id0);
       $nbC = count($comments[$id0] ?? []);
       $contested0 = $e['disputed_by'] !== null && !$e['dispute_ok']; ?>
-    <button type="button" class="tile payer-<?= (int)$e['paid_by'] === $A ? 'a' : 'b' ?><?= $contested0 ? ' t-ko' : '' ?><?= $hasProp ? ' t-prop' : '' ?>" data-open="d<?= $id0 ?>">
+    <?php $todo0 = !$e[$myCol]; $both0 = $e['ok_a'] && $e['ok_b']; ?>
+    <button type="button" class="tile payer-<?= (int)$e['paid_by'] === $A ? 'a' : 'b' ?><?= $todo0 ? ' t-todo' : '' ?><?= $both0 ? ' t-done' : '' ?><?= $contested0 ? ' t-ko' : '' ?><?= $hasProp ? ' t-prop' : '' ?>" data-open="d<?= $id0 ?>">
+      <?php if ($todo0): ?><span class="t-flag">À valider</span><?php elseif ($both0): ?><span class="t-check" title="Validé par les deux">✓</span><?php endif; ?>
       <span class="t-label"><?= h($e['label']) ?></span>
       <span class="t-amt"><?= money((int)$e['amount_cents']) ?></span>
       <?php if ($isDep0): ?>

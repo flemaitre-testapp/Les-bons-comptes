@@ -330,3 +330,15 @@ function upgrade_oct2026(): void
     set_setting('data_oct2026b', '1');
     db()->commit();
 }
+
+/** Remise à zéro des commentaires demandée par Florian le 09/10/2026 (une seule fois, après la reprise d'octobre). */
+function reset_comments_once(): void
+{
+    if (!is_admin() || setting('comments_reset_20261009') === '1') {
+        return;
+    }
+    $n = (int)q('SELECT COUNT(*) FROM comments')->fetchColumn();
+    q('DELETE FROM comments');
+    set_setting('comments_reset_20261009', '1');
+    audit('comments.reset', null, null, ['commentaires_supprimes' => $n]);
+}

@@ -110,4 +110,5 @@ const AUDIT_LABELS = [
     'category.create' => 'Catégorie créée',
     'category.update' => 'Catégorie modifiée',
     'export' => 'Export des données',
+    'comments.reset' => 'Commentaires remis à zéro',
 ];
