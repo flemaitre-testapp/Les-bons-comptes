@@ -91,8 +91,10 @@ function entry_row(array $e): string
 
 function legend(): string
 {
-    return '<p class="legend"><span class="tone tone-mensuel">Charge mensuelle</span>'
-        . '<span class="tone tone-ponctuel">Dépense ponctuelle</span>'
-        . '<span class="tone tone-perso">Dépense perso</span>'
-        . '<span class="tone tone-remb">Remboursement</span></p>';
+    $A = user_name(party_a_id());
+    $B = user_name((int)parties()['B']['id']);
+    return '<p class="legend"><span class="tone tone-pa">Payé par ' . h($A) . '</span>'
+        . '<span class="tone tone-pb">Payé par ' . h($B) . '</span>'
+        . '<span class="tt tt-mensuel">Mensuel</span><span class="tt tt-ponctuel">Ponctuel</span>'
+        . '<span class="tt tt-perso">Perso</span><span class="tt tt-remb">Paiement</span></p>';
 }

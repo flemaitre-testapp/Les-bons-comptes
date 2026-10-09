@@ -379,3 +379,36 @@ dialog.sheet .mrow { border-top: 0; padding: 1rem 1.1rem 1.1rem; }
   border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-size: 1.3rem; line-height: 1; cursor: pointer; }
 dialog.sheet details.row-actions { margin-top: .7rem; }
 dialog.sheet .mrow-head { padding-right: 2.6rem; }
+
+/* Couleurs par personne */
+:root { --c-a: #2563a8; --c-a-bg: #e7eff8; --c-b: #b23f72; --c-b-bg: #f8e8ef; }
+@media (prefers-color-scheme: dark) { :root { --c-a: #7fb1e8; --c-a-bg: #1b2735; --c-b: #e58ab3; --c-b-bg: #33202a; } }
+.tile.payer-a { border-top-color: var(--c-a); background: linear-gradient(var(--c-a-bg), var(--surface) 55%); }
+.tile.payer-b { border-top-color: var(--c-b); background: linear-gradient(var(--c-b-bg), var(--surface) 55%); }
+.tile.t-ko { background: var(--ko-bg); }
+.c-a { color: var(--c-a); font-weight: 600; }
+.c-b { color: var(--c-b); font-weight: 600; }
+.tone-pa::before { background: var(--c-a); }
+.tone-pb::before { background: var(--c-b); }
+.t-type, .tt { font-size: .6rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; padding: .08rem .35rem; border-radius: 4px; }
+.t-type { margin-left: auto; }
+.tt-mensuel { background: color-mix(in srgb, var(--c-mensuel) 15%, transparent); color: var(--c-mensuel); }
+.tt-ponctuel { background: color-mix(in srgb, var(--c-ponctuel) 15%, transparent); color: var(--c-ponctuel); }
+.tt-perso { background: color-mix(in srgb, var(--c-perso) 15%, transparent); color: var(--c-perso); }
+.tt-remb { background: color-mix(in srgb, var(--c-remb) 15%, transparent); color: var(--c-remb); }
+.legend .tt { align-self: center; }
+
+/* Bilan du mois */
+.hero-sum { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; margin-top: .8rem; padding-top: .7rem; border-top: 1px solid rgba(255,255,255,.18); }
+.hero-sum span { font-size: .72rem; opacity: .8; display: flex; flex-direction: column; gap: .1rem; }
+.hero-sum strong { font-size: .95rem; opacity: 1; font-variant-numeric: tabular-nums; }
+.hero-sum strong.trop { color: #ffd27a; }
+.pay-form h2 { margin: 0 0 .2rem; padding-right: 2.6rem; }
+.pay-form { padding: 1rem 1.1rem 1.2rem; }
+.seg span.pay-a { border-left: 4px solid var(--c-a); }
+.seg span.pay-b { border-left: 4px solid var(--c-b); }
+.pay-line.pay-a span { border-left: 3px solid var(--c-a); padding-left: .5rem; }
+.pay-line.pay-b span { border-left: 3px solid var(--c-b); padding-left: .5rem; }
+.dot { flex: 0 0 1.25rem; }
+.t-foot { flex-wrap: nowrap; min-width: 0; }
+.t-type { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

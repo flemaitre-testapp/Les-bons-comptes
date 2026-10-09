@@ -24,6 +24,27 @@ if (is_post()) {
     $action = post('action');
     $reason = post('reason');
     $anchor = (int)post('id');
+    if ($action === 'pay') {
+        $amount = parse_money(post('amount'));
+        $payer = (int)post('paid_by');
+        $date = post('date');
+        if (!$amount || !valid_date($date) || !in_array($payer, [party_a_id(), (int)parties()['B']['id']], true)) {
+            flash('err', 'Paiement : montant, date et payeur obligatoires.');
+        } else {
+            db()->beginTransaction();
+            $pid = create_entry([
+                'kind' => 'remboursement', 'op_date' => $date, 'label' => 'Paiement ' . month_label($m),
+                'amount_cents' => $amount, 'paid_by' => $payer, 'beneficiary' => other_party($payer),
+                'notes' => trim('Paiement effectué le ' . fdate($date) . ' pour ' . month_label($m) . '. ' . post('note')),
+                'period' => $m,
+            ]);
+            db()->commit();
+            flash('ok', 'Paiement de ' . money($amount) . ' enregistré, daté du ' . fdate($date) . '.');
+            header('Location: ' . url('dashboard', ['m' => $m]) . '#e' . $pid);
+            exit;
+        }
+        redirect('dashboard', ['m' => $m]);
+    }
     if ($action === 'ok_all') {
         $col = ok_col($uid);
         db()->beginTransaction();
@@ -105,9 +126,11 @@ $last = date('Y-m-t', strtotime($first));
 $prev = date('Y-m', strtotime($first . ' -1 month'));
 $next = date('Y-m', strtotime($first . ' +1 month'));
 
-$rows = q("SELECT * FROM entries WHERE cancelled = 0 AND op_date BETWEEN ? AND ?
+$rows = q("SELECT * FROM entries WHERE cancelled = 0 AND (
+               (op_date BETWEEN ? AND ? AND NOT (kind = 'remboursement' AND period IS NOT NULL AND period <> ?))
+               OR (kind = 'remboursement' AND period = ?))
            ORDER BY CASE WHEN kind = 'remboursement' THEN 2 WHEN recurring_id IS NULL THEN 1 ELSE 0 END,
-                    CASE WHEN part_a_bp IN (0, 10000) THEN 1 ELSE 0 END, op_date, id", [$first, $last])->fetchAll();
+                    CASE WHEN part_a_bp IN (0, 10000) THEN 1 ELSE 0 END, op_date, id", [$first, $last, $m, $m])->fetchAll();
 $mb = balance('all', $last, $first);
 $global = balance('all');
 $ib = income_bp();
@@ -146,6 +169,23 @@ foreach ($rows as $e) {
     $owedA += $oa;
     $owedB += $ob;
 }
+// Dû pour le mois (dépenses) puis paiements effectués. Positif = Florian doit à Julie.
+$du = 0;
+$paid = 0;
+$payments = [];
+foreach ($rows as $e) {
+    if ($e['kind'] === 'depense') {
+        [$oa, $ob] = line_owed($e);
+        $du += $oa - $ob;
+    } else {
+        $paid += (int)$e['paid_by'] === $A ? (int)$e['amount_cents'] : -(int)$e['amount_cents'];
+        $payments[] = $e;
+    }
+}
+$rest = $du - $paid;
+$trop = $rest !== 0 && ($du === 0 || ($rest > 0) !== ($du > 0));
+$debtor = $rest > 0 ? $A : $B;
+$creditor = $rest > 0 ? $B : $A;
 $otherTodo = (int)q("SELECT COUNT(*) FROM entries WHERE cancelled = 0 AND $myCol = 0 AND substr(op_date, 1, 7) <> ?", [$m])->fetchColumn();
 $litigeTotal = $mb['litige'][$A] + $mb['litige'][$B];
 
@@ -158,16 +198,60 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
 </div>
 
 <section class="hero">
-  <p class="hero-label">Bilan de <?= h(month_label($m)) ?></p>
-  <p class="hero-amount"><?= money($mb['amount']) ?></p>
-  <p class="hero-sentence"><?= $mb['amount'] ? h(user_name($mb['debtor']) . ' doit ' . money($mb['amount']) . ' à ' . user_name($mb['creditor'])) : 'Mois équilibré' ?></p>
-  <?php if ($litigeTotal): ?><p class="hero-note">Dont <?= money($litigeTotal) ?> retirés par une contestation en cours (détail plus bas).</p><?php endif; ?>
-  <p class="hero-note">Solde global à date : <?= h(balance_sentence($global)) ?></p>
+  <p class="hero-label"><?= $trop ? 'Trop perçu' : 'Reste à payer' ?> · <?= h(month_label($m)) ?></p>
+  <p class="hero-amount"><?= money(abs($rest)) ?></p>
+  <p class="hero-sentence">
+    <?php if ($rest === 0): ?>Mois soldé
+    <?php elseif ($trop): ?><?= h(user_name($debtor)) ?> a reçu <?= money(abs($rest)) ?> de trop : à rendre à <?= h(user_name($creditor)) ?>
+    <?php else: ?><?= h(user_name($debtor)) ?> doit encore <?= money(abs($rest)) ?> à <?= h(user_name($creditor)) ?>
+    <?php endif; ?>
+  </p>
+  <div class="hero-sum">
+    <span>Dû pour le mois<strong><?= $du ? h(user_name($du > 0 ? $A : $B)) . ' → ' . money(abs($du)) : '0,00 €' ?></strong></span>
+    <span>Paiements effectués<strong><?= money(abs($paid)) ?></strong></span>
+    <span><?= $trop ? 'Trop perçu' : 'Reste' ?><strong class="<?= $trop ? 'trop' : '' ?>"><?= money(abs($rest)) ?></strong></span>
+  </div>
+  <?php if ($litigeTotal): ?><p class="hero-note">Hors <?= money($litigeTotal) ?> en litige (contestation en cours).</p><?php endif; ?>
+  <p class="hero-note">Solde global, tous mois confondus : <?= h(balance_sentence($global)) ?></p>
   <div class="hero-actions">
-    <a class="btn" href="<?= url('new') ?>">+ Dépense</a>
-    <a class="btn btn-ghost" href="<?= url('transfer') ?>">⇄ Remboursement</a>
+    <button type="button" class="btn" data-open="pay-dialog">✓ Paiement effectué</button>
+    <a class="btn btn-ghost" href="<?= url('new') ?>">+ Dépense</a>
   </div>
 </section>
+
+<dialog class="sheet" id="pay-dialog">
+  <button type="button" class="sheet-close" data-close aria-label="Fermer">×</button>
+  <form method="post" class="form pay-form">
+    <?= csrf_field() ?><input type="hidden" name="action" value="pay"><input type="hidden" name="id" value="0">
+    <h2>Paiement effectué · <?= h(month_label($m)) ?></h2>
+    <div class="field"><span class="lbl">Qui a payé ?</span>
+      <div class="seg">
+        <?php foreach ([$A, $B] as $who): ?>
+          <label><input type="radio" name="paid_by" value="<?= $who ?>" <?= $who === ($rest !== 0 ? $debtor : $A) ? 'checked' : '' ?>><span class="pay-<?= $who === $A ? 'a' : 'b' ?>"><?= h(user_name($who)) ?> → <?= h(user_name(other_party($who))) ?></span></label>
+        <?php endforeach; ?>
+      </div>
+    </div>
+    <div class="row2">
+      <label>Montant (€) <input name="amount" value="<?= $rest ? h(number_format(abs($rest) / 100, 2, ',', '')) : '' ?>" inputmode="decimal" required></label>
+      <label>Date du paiement <input type="date" name="date" value="<?= date('Y-m-d') ?>" required></label>
+    </div>
+    <label>Note (virement, chèque, espèces...) <input name="note" maxlength="300"></label>
+    <p class="hint">Le paiement est rattaché à <?= h(month_label($m)) ?> et garde sa vraie date. L'autre partie le voit et peut le valider.</p>
+    <button class="btn">Enregistrer le paiement</button>
+  </form>
+</dialog>
+
+<?php if ($payments): ?>
+<section class="card payments">
+  <h2>Paiements de <?= h(month_label($m)) ?></h2>
+  <ul class="kv">
+    <?php foreach ($payments as $e): ?>
+      <li class="pay-line pay-<?= (int)$e['paid_by'] === $A ? 'a' : 'b' ?>"><span><?= fdate($e['op_date']) ?> · <?= h(user_name((int)$e['paid_by'])) ?> → <?= h(user_name((int)$e['beneficiary'])) ?>
+        <?= $e['ok_a'] && $e['ok_b'] ? ' ✓' : '' ?></span><strong><?= money((int)$e['amount_cents']) ?></strong></li>
+    <?php endforeach; ?>
+  </ul>
+</section>
+<?php endif; ?>
 
 <?php $nbProp = is_admin() ? (int)q("SELECT COUNT(*) FROM proposals p JOIN entries e ON e.id = p.entry_id WHERE p.status = 'en_attente' AND e.cancelled = 0")->fetchColumn() : 0; ?>
 <?php if ($nbProp): ?><div class="flash flash-info"><?= $nbProp ?> proposition(s) d'ajustement de <?= h($nameB) ?> à valider.</div><?php endif; ?>
@@ -196,11 +280,11 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
       $hasProp = $isDep0 && pending_proposal($id0);
       $nbC = count($comments[$id0] ?? []);
       $contested0 = $e['disputed_by'] !== null && !$e['dispute_ok']; ?>
-    <button type="button" class="tile tone-<?= entry_tone($e) ?><?= $contested0 ? ' t-ko' : '' ?><?= $hasProp ? ' t-prop' : '' ?>" data-open="d<?= $id0 ?>">
+    <button type="button" class="tile payer-<?= (int)$e['paid_by'] === $A ? 'a' : 'b' ?><?= $contested0 ? ' t-ko' : '' ?><?= $hasProp ? ' t-prop' : '' ?>" data-open="d<?= $id0 ?>">
       <span class="t-label"><?= h($e['label']) ?></span>
       <span class="t-amt"><?= money((int)$e['amount_cents']) ?></span>
       <?php if ($isDep0): ?>
-        <span class="t-split"><?= h(mb_substr($nameA, 0, 1)) ?> <?= money($ls0['a']) ?><br><?= h(mb_substr($nameB, 0, 1)) ?> <?= money($ls0['b']) ?></span>
+        <span class="t-split"><span class="c-a"><?= h(mb_substr($nameA, 0, 1)) ?> <?= money($ls0['a']) ?></span><br><span class="c-b"><?= h(mb_substr($nameB, 0, 1)) ?> <?= money($ls0['b']) ?></span></span>
       <?php else: ?>
         <span class="t-split"><?= h(user_name((int)$e['paid_by'])) ?> → <?= h(user_name((int)$e['beneficiary'])) ?></span>
       <?php endif; ?>
@@ -209,6 +293,7 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
         <span class="dot <?= $e['ok_b'] ? 'on' : '' ?>" title="<?= h($nameB) ?>"><?= h(mb_substr($nameB, 0, 1)) ?></span>
         <?php if ($nbC): ?><span class="t-ic">💬<?= $nbC ?></span><?php endif; ?>
         <?php if ($hasProp): ?><span class="t-ic" title="Proposition en attente">✎</span><?php endif; ?>
+        <span class="t-type tt-<?= entry_tone($e) ?>"><?= ['mensuel' => 'Mensuel', 'ponctuel' => 'Ponctuel', 'perso' => 'Perso', 'remb' => 'Paiement'][entry_tone($e)] ?></span>
       </span>
     </button>
   <?php endforeach; ?>
