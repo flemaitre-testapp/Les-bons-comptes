@@ -599,11 +599,14 @@ function contest_reason(int $entryId): string
     return (string)($d['motif'] ?? '');
 }
 
+/** Premier mois pris en compte dans le report : octobre 2026 et avant n'en font pas partie. */
+const CARRY_START = '2026-11';
+
 /** Report à l'entrée d'un mois : ce qui reste dû des mois précédents. Positif = A doit à B. */
 function carry_before(string $ym): int
 {
     $carry = 0;
-    foreach (q("SELECT * FROM entries WHERE cancelled = 0 AND (CASE WHEN kind = 'remboursement' AND period IS NOT NULL THEN period ELSE substr(op_date, 1, 7) END) < ?", [$ym]) as $e) {
+    foreach (q("SELECT * FROM entries WHERE cancelled = 0 AND (CASE WHEN kind = 'remboursement' AND period IS NOT NULL THEN period ELSE substr(op_date, 1, 7) END) BETWEEN ? AND ?", [CARRY_START, date('Y-m', strtotime($ym . '-01 -1 month'))]) as $e) {
         [$oa, $ob] = line_owed($e);
         $carry += $oa - $ob;
     }

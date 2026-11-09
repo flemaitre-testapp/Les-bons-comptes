@@ -372,7 +372,10 @@ dialog.sheet .mrow-head { padding-right: 2.6rem; }
 .line-sub { font-size: .8rem; color: var(--muted); }
 .line-note { font-size: .8rem; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: .1rem; }
 .line-alert { font-size: .78rem; font-weight: 700; color: var(--ko); margin-top: .1rem; }
-.line-amt { font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.line-amt { display: flex; flex-direction: column; align-items: flex-end; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.my-label { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); line-height: 1.1; }
+.my-part { font-size: 1.15rem; font-weight: 800; color: var(--brand); line-height: 1.25; }
+.line-total { font-size: .75rem; color: var(--muted); }
 .tick-form { margin: 0; padding: 0 12px 0 6px; }
 .tick { width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--ok); background: transparent; color: var(--ok); font-size: 1.2rem; font-weight: 800; cursor: pointer; transition: transform .12s ease, background .12s ease; }
 .tick:hover { background: var(--ok-bg); }

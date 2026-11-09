@@ -25,6 +25,7 @@ if (is_post()) {
     $reason = post('reason');
     $anchor = (int)post('id');
     $keepOpen = false; // la fiche ne reste ouverte qu'après un commentaire
+    $editOpen = false; // ou après un changement de montant / répartition
     if ($action === 'pay') {
         $amount = parse_money(post('amount'));
         $payer = (int)post('paid_by');
@@ -97,6 +98,7 @@ if (is_post()) {
             accept_contest($e, $uid);
             flash('ok', 'Ajustement accepté.');
         } elseif ($action === 'adjust' && can_adjust($e, $me)) {
+            $editOpen = is_admin();
             $amount = parse_money(post('amount'));
             $bp = resolve_split(post('mode'), post('part_a'));
             if (is_admin() && $reason === '') {
@@ -134,7 +136,7 @@ if (is_post()) {
         echo '{"ok":true}';
         exit;
     }
-    header('Location: ' . url('dashboard', ['m' => $m]) . ($keepOpen ? '#e' . $anchor : ''));
+    header('Location: ' . url('dashboard', ['m' => $m]) . ($editOpen ? '#a' . $anchor : ($keepOpen ? '#e' . $anchor : '')));
     exit;
 }
 
@@ -215,6 +217,11 @@ $carry = carry_before($m);
 $rest = $carry + $du - $paid;
 $base = $carry + $du;
 $trop = $rest !== 0 && ($base === 0 || ($rest > 0) !== ($base > 0));
+if ($trop && $m < CARRY_START) {
+    // Le trop perçu des mois d'avant le report n'est plus affiché
+    $rest = 0;
+    $trop = false;
+}
 $owedA += max($carry, 0);
 $owedB += max(-$carry, 0);
 $debtor = $rest > 0 ? $A : $B;
@@ -240,10 +247,11 @@ $line = function (array $e, bool $todo) use ($uid, $A, $nameA, $nameB, $comments
         $ls = line_shares($e);
         $mine = $uid === $A ? $ls['a'] : $ls['b'];
         $verb = !empty($e['recette']) ? 'perçu' : 'payé';
-        $sub = $type . ' · ' . ((int)$e['paid_by'] === $uid ? 'Tu as ' . $verb : h($payerName) . ' a ' . $verb) . ' · ta part ' . money($mine);
+        $sub = $type . ' · ' . ((int)$e['paid_by'] === $uid ? 'Tu as ' . $verb : h($payerName) . ' a ' . $verb);
     } else {
         $sub = $type . ' · ' . h($payerName) . ' → ' . h(user_name((int)$e['beneficiary'])) . ' · ' . fdate($e['op_date']);
     }
+    $mine = $isDep ? $mine : null;
     $cs = $comments[$id] ?? [];
     $last = $cs ? end($cs) : null;
     $blocked = $isBlocked($e);
@@ -257,7 +265,15 @@ $line = function (array $e, bool $todo) use ($uid, $A, $nameA, $nameB, $comments
           <?php if ($last): ?><span class="line-note"><?= h(user_name((int)$last['user_id'])) ?> : <?= h($last['body']) ?></span><?php endif; ?>
           <?php if ($blocked): ?><span class="line-alert">À régler : ouvre la fiche</span><?php endif; ?>
         </span>
-        <span class="line-amt"><?= money((int)$e['amount_cents']) ?></span>
+        <span class="line-amt">
+          <?php if ($mine !== null): ?>
+            <span class="my-label">Ta part</span>
+            <span class="my-part"><?= money($mine) ?></span>
+            <span class="line-total">sur <?= money((int)$e['amount_cents']) ?></span>
+          <?php else: ?>
+            <span class="my-part"><?= money((int)$e['amount_cents']) ?></span>
+          <?php endif; ?>
+        </span>
       </button>
       <?php if ($todo && !$blocked): ?>
         <form method="post" class="tick-form" data-tick="<?= $id ?>">
@@ -491,7 +507,6 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
     </tfoot>
   </table>
   </div>
-  <p class="muted small-txt">Tous mois confondus : <?= h(balance_sentence($global)) ?>.</p>
   <?php if ($ib !== null): $ov = $mb['over'][$A]; ?>
     <h3>Selon les revenus</h3>
     <p class="muted small-txt">Au prorata (<?= pct($ib) ?> / <?= pct(10000 - $ib) ?>, art. 371-2 du Code civil), <?= h($ov >= 0 ? $nameA : $nameB) ?> prend en charge <strong><?= money(abs($ov)) ?></strong> de plus ce mois-ci, et <strong><?= money(abs($global['over'][$A])) ?></strong> depuis le début (<?= h($global['over'][$A] >= 0 ? $nameA : $nameB) ?>).</p>

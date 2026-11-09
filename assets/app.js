@@ -26,7 +26,15 @@
     d.addEventListener('click', function (ev) { if (ev.target === d) d.close(); });
     d.querySelectorAll('[data-close]').forEach(function (c) { c.addEventListener('click', function () { d.close(); }); });
   });
-  if (/^#e\d+$/.test(location.hash)) { openSheet('d' + location.hash.slice(2)); }
+  if (/^#[ea]\d+$/.test(location.hash)) {
+    var sheetId = 'd' + location.hash.slice(2);
+    openSheet(sheetId);
+    if (location.hash.charAt(1) === 'a') {
+      var edit = document.querySelector('#' + sheetId + ' .fiche-more');
+      if (edit) edit.open = true;
+    }
+    history.replaceState(null, '', location.pathname + location.search);
+  }
 
   // Validation en un geste : la ligne quitte la liste sans recharger la page
   var todo = document.getElementById('todo');
