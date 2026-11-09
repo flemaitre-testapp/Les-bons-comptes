@@ -280,9 +280,12 @@ function can_cancel(array $e, array $u): bool
 /** Charges récurrentes actives pas encore générées pour un mois donné (YYYY-MM). */
 function pending_recurring(string $ym): array
 {
-    return q('SELECT r.* FROM recurring r WHERE r.active = 1 AND NOT EXISTS (
+    // Une charge ne remonte pas avant sa création, et ne revient pas si elle a été retirée de ce mois.
+    return q('SELECT r.* FROM recurring r WHERE r.active = 1 AND substr(r.created_at, 1, 7) <= ? AND NOT EXISTS (
         SELECT 1 FROM entries e WHERE e.recurring_id = r.id AND e.period = ? AND e.cancelled = 0
-    ) ORDER BY r.day_of_month, r.label', [$ym])->fetchAll();
+    ) AND NOT EXISTS (
+        SELECT 1 FROM recurring_skips s WHERE s.recurring_id = r.id AND s.period = ?
+    ) ORDER BY r.day_of_month, r.label', [$ym, $ym, $ym])->fetchAll();
 }
 
 function ok_col(int $uid): string
@@ -585,6 +588,45 @@ function contest_reason(int $entryId): string
     $d = q("SELECT details FROM audit_log WHERE entity = 'entry' AND entity_id = ? AND action = 'entry.contest' ORDER BY id DESC LIMIT 1", [$entryId])->fetchColumn();
     $d = $d ? json_decode($d, true) : [];
     return (string)($d['motif'] ?? '');
+}
+
+/** Empêche une charge fixe retirée d'un mois d'y être recréée automatiquement. */
+function skip_recurring_month(array $e): void
+{
+    if ($e['recurring_id'] && $e['period']) {
+        q('INSERT OR IGNORE INTO recurring_skips(recurring_id, period) VALUES(?, ?)', [$e['recurring_id'], $e['period']]);
+    }
+}
+
+/** Suppression définitive d'une ligne par l'administrateur. */
+function delete_entry(array $e, string $reason = ''): void
+{
+    $info = ['libelle' => $e['label'], 'montant' => money((int)$e['amount_cents']), 'date' => fdate($e['op_date']),
+        'paye_par' => user_name((int)$e['paid_by']), 'raison' => $reason];
+    skip_recurring_month($e);
+    q('UPDATE entries SET replaces = NULL WHERE replaces = ?', [$e['id']]);
+    q('DELETE FROM comments WHERE entry_id = ?', [$e['id']]);
+    q('DELETE FROM proposals WHERE entry_id = ?', [$e['id']]);
+    q('DELETE FROM entries WHERE id = ?', [$e['id']]);
+    if ($e['receipt'] && is_file(UPLOAD_DIR . '/' . basename($e['receipt']))
+        && !q('SELECT 1 FROM entries WHERE receipt = ?', [$e['receipt']])->fetchColumn()) {
+        @unlink(UPLOAD_DIR . '/' . basename($e['receipt']));
+    }
+    audit('entry.delete', 'entry', (int)$e['id'], $info);
+}
+
+/** Supprime une charge fixe à partir d'un mois (YYYY-MM) : les mois précédents ne bougent pas. Retourne le nombre de lignes retirées. */
+function stop_recurring(int $rid, string $from): int
+{
+    $n = 0;
+    foreach (q('SELECT * FROM entries WHERE recurring_id = ? AND cancelled = 0 AND period >= ?', [$rid, $from])->fetchAll() as $e) {
+        delete_entry($e, 'Charge fixe supprimée');
+        $n++;
+    }
+    $r = q('SELECT * FROM recurring WHERE id = ?', [$rid])->fetch();
+    q('UPDATE recurring SET active = 0, hidden = 1 WHERE id = ?', [$rid]);
+    audit('recurring.stop', 'recurring', $rid, ['libelle' => $r['label'] ?? '', 'a_partir_de' => month_label($from)]);
+    return $n;
 }
 
 /** Filtre SQL du journal : les lignes supprimées par l'admin ne sont visibles que par lui. */

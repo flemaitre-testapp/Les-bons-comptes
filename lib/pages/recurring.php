@@ -6,6 +6,14 @@ $B = parties()['B'];
 if (is_post()) {
     check_csrf();
     $action = post('action');
+    if ($action === 'delete') {
+        $rid = (int)post('id');
+        db()->beginTransaction();
+        $n = stop_recurring($rid, date('Y-m'));
+        db()->commit();
+        flash('ok', 'Charge supprimée' . ($n ? ', retirée de ' . month_label(date('Y-m')) : '') . '. Les mois passés ne changent pas.');
+        redirect('recurring');
+    }
     $amount = parse_money(post('amount'));
     $choice = post('mode');
     $bp = resolve_split($choice, post('part_a'));
@@ -54,7 +62,7 @@ if (is_post()) {
     redirect('recurring');
 }
 
-$rows = q('SELECT * FROM recurring ORDER BY active DESC, CASE WHEN part_a_bp IN (0, 10000) THEN 1 ELSE 0 END, label')->fetchAll();
+$rows = q('SELECT * FROM recurring WHERE hidden = 0 ORDER BY active DESC, CASE WHEN part_a_bp IN (0, 10000) THEN 1 ELSE 0 END, label')->fetchAll();
 $cats = categories();
 $total = ['commun' => 0, 'perso' => 0];
 foreach ($rows as $r) {
@@ -87,14 +95,20 @@ layout_start('Charges mensuelles', 'admin');
 <section class="card">
   <h2>Charges mensuelles</h2>
   <p class="muted">Ajoutées automatiquement le 1er de chaque mois. Montants totaux, avant répartition.</p>
-  <p class="legend"><span class="tone tone-mensuel">Commune <?= money($total['commun']) ?>/mois</span> <span class="tone tone-perso">Perso <?= money($total['perso']) ?>/mois</span></p>
-  <?php foreach ($rows as $r): $bp = rec_bp($r); $tone = ($bp === 0 || $bp === 10000) ? 'perso' : 'mensuel'; ?>
-    <form method="post" class="inline-form rec-row tone-row tone-<?= $tone ?><?= $r['active'] ? '' : ' inactive' ?>">
+  <p class="muted">Communes <?= money($total['commun']) ?>/mois · Perso <?= money($total['perso']) ?>/mois</p>
+  <?php foreach ($rows as $r): ?>
+    <div class="rec-item<?= $r['active'] ? '' : ' inactive' ?>">
+    <form method="post" class="inline-form rec-row">
       <?= csrf_field() ?><input type="hidden" name="action" value="update"><input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
       <?= $fields($r) ?>
-      <label class="check"><input type="checkbox" name="active" value="1" <?= $r['active'] ? 'checked' : '' ?>> active</label>
-      <button class="btn btn-ghost small">OK</button>
+      <label class="check"><input type="checkbox" name="active" value="1" <?= $r['active'] ? 'checked' : '' ?>> en cours</label>
+      <button class="btn btn-ghost small">Enregistrer</button>
     </form>
+    <form method="post" class="rec-del" data-confirm="Supprimer « <?= h($r['label']) ?> » ? Elle disparaît à partir de <?= h(month_label(date('Y-m'))) ?>, les mois passés ne changent pas.">
+      <?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
+      <button class="linkbtn">Supprimer cette charge</button>
+    </form>
+    </div>
   <?php endforeach; ?>
   <h3>Ajouter une charge mensuelle</h3>
   <form method="post" class="inline-form rec-row">

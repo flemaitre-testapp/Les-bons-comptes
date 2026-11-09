@@ -28,6 +28,88 @@
   });
   if (/^#e\d+$/.test(location.hash)) { openSheet('d' + location.hash.slice(2)); }
 
+  // Validation en un geste : la ligne quitte la liste sans recharger la page
+  var todo = document.getElementById('todo');
+  var toastTimer;
+  function refreshProgress() {
+    if (!todo) return;
+    var bar = document.getElementById('progress-bar');
+    var total = +todo.getAttribute('data-total');
+    var done = +todo.getAttribute('data-done');
+    if (bar && total) bar.style.width = Math.round(done * 100 / total) + '%';
+  }
+  refreshProgress();
+  function toast(label, onUndo) {
+    var old = document.querySelector('.toast');
+    if (old) old.remove();
+    clearTimeout(toastTimer);
+    var t = document.createElement('div');
+    t.className = 'toast';
+    t.setAttribute('role', 'status');
+    t.textContent = label;
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = 'Annuler';
+    b.addEventListener('click', onUndo);
+    t.appendChild(b);
+    document.body.appendChild(t);
+    toastTimer = setTimeout(function () { t.remove(); }, 5000);
+  }
+  function send(form, on) {
+    var data = new FormData(form);
+    data.set('on', on);
+    data.set('ajax', '1');
+    return fetch(location.href, { method: 'POST', body: data, credentials: 'same-origin' }).then(function (r) {
+      if (!r.ok) throw new Error('http');
+      return r.json();
+    });
+  }
+  document.querySelectorAll('form[data-tick]').forEach(function (f) {
+    f.addEventListener('submit', function (ev) {
+      if (!window.fetch) return;
+      ev.preventDefault();
+      var li = f.closest('.line');
+      var btn = f.querySelector('.tick');
+      var id = f.getAttribute('data-tick');
+      btn.classList.add('done');
+      btn.disabled = true;
+      send(f, '1').then(function () {
+        li.classList.add('leaving');
+        setTimeout(function () {
+          var doneList = document.getElementById('done-list');
+          f.remove();
+          li.classList.remove('leaving');
+          doneList.insertBefore(li, doneList.firstChild);
+          document.getElementById('done-fold').hidden = false;
+          document.getElementById('done-count').textContent = doneList.children.length;
+          var left = document.getElementById('todo-list').children.length;
+          document.getElementById('todo-count').textContent = left;
+          todo.setAttribute('data-done', +todo.getAttribute('data-done') + 1);
+          refreshProgress();
+          if (!left) {
+            document.getElementById('all-done').hidden = false;
+            var all = document.getElementById('ok-all');
+            if (all) all.remove();
+          }
+          var sheet = document.querySelector('form[data-sheet-ok="' + id + '"]');
+          if (sheet) {
+            sheet.querySelector('input[name=on]').value = '0';
+            var sb = sheet.querySelector('button');
+            sb.textContent = 'Remettre à valider';
+            sb.className = 'btn btn-ghost';
+          }
+        }, 320);
+        toast('Validé', function () {
+          send(f, '0').then(function () { location.reload(); });
+        });
+      }).catch(function () {
+        btn.classList.remove('done');
+        btn.disabled = false;
+        window.alert('Ça n\'a pas marché. Recharge la page et réessaie.');
+      });
+    });
+  });
+
   // Impression du relevé
   document.querySelectorAll('[data-print]').forEach(function (b) {
     b.addEventListener('click', function () { window.print(); });

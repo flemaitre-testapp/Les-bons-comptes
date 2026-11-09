@@ -46,6 +46,7 @@ if (is_post()) {
         }
         q('UPDATE entries SET cancelled = 1, cancelled_by = ?, cancelled_at = ?, cancel_reason = ? WHERE id = ?',
             [$me['id'], now(), $comment, $id]);
+        skip_recurring_month($e);
         audit('entry.cancel', 'entry', $id, ['raison' => $comment]);
         flash('ok', 'Opération annulée. Elle reste visible, barrée, avec la raison.');
     }

@@ -81,20 +81,10 @@ function entry_row(array $e): string
         $meta .= ' · ' . h(split_label($e));
     }
     $cat = $isDep ? '' : 'Remboursement';
-    return '<a class="row tone-row tone-' . entry_tone($e) . ($e['cancelled'] ? ' cancelled' : '') . '" href="' . url('entry', ['id' => $e['id']]) . '">'
+    return '<a class="row' . ($e['cancelled'] ? ' cancelled' : '') . '" href="' . url('entry', ['id' => $e['id']]) . '">'
         . '<span class="row-main"><span class="row-title">' . h($e['label'])
         . ($e['receipt'] ? ' <span class="clip" title="Justificatif joint">📎</span>' : '') . '</span>'
         . '<span class="row-meta">' . $meta . ($cat ? ' · ' . h($cat) : '') . '</span></span>'
         . '<span class="row-side"><span class="amt' . ($isDep ? '' : ' amt-transfer') . '">' . money((int)$e['amount_cents']) . '</span>'
         . status_badge($e) . '</span></a>';
-}
-
-function legend(): string
-{
-    $A = user_name(party_a_id());
-    $B = user_name((int)parties()['B']['id']);
-    return '<p class="legend"><span class="tone tone-pa">Payé par ' . h($A) . '</span>'
-        . '<span class="tone tone-pb">Payé par ' . h($B) . '</span>'
-        . '<span class="tt tt-mensuel">Mensuel</span><span class="tt tt-ponctuel">Ponctuel</span>'
-        . '<span class="tt tt-perso">Perso</span><span class="tt tt-recette">Recette</span><span class="tt tt-remb">Paiement</span></p>';
 }

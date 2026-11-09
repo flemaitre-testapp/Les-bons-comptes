@@ -66,7 +66,6 @@ layout_start('Opérations', 'entries');
   <button class="btn small">Filtrer</button>
 </form>
 <p class="totals"><?= count($rows) ?> opération(s) · Dépenses : <strong><?= money($totDep) ?></strong> · Remboursements : <strong><?= money($totRemb) ?></strong></p>
-<?= legend() ?>
 <section class="card flush">
   <?php if ($rows): ?>
     <div class="list"><?php foreach ($rows as $e) echo entry_row($e); ?></div>

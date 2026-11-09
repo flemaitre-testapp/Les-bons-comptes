@@ -20,14 +20,15 @@ function db(): PDO
 function migrate(PDO $pdo): void
 {
     $version = (int)$pdo->query('PRAGMA user_version')->fetchColumn();
-    if ($version >= 5) {
+    if ($version >= 6) {
         return;
     }
     if ($version >= 1) {
         if ($version < 2) migrate_v2($pdo);
         if ($version < 3) migrate_v3($pdo);
         if ($version < 4) migrate_v4($pdo);
-        migrate_v5($pdo);
+        if ($version < 5) migrate_v5($pdo);
+        migrate_v6($pdo);
         return;
     }
     $pdo->exec(<<<SQL
@@ -130,6 +131,7 @@ SQL);
     migrate_v3($pdo);
     migrate_v4($pdo);
     migrate_v5($pdo);
+    migrate_v6($pdo);
 }
 
 /** v2 : validation séparée par chaque partie (case Florian / case Julie). */
@@ -206,4 +208,12 @@ function migrate_v5(PDO $pdo): void
 {
     $pdo->exec('ALTER TABLE entries ADD COLUMN recette INTEGER NOT NULL DEFAULT 0');
     $pdo->exec('PRAGMA user_version = 5');
+}
+
+/** v6 : charge fixe retirée d'un seul mois, ou supprimée de la liste. */
+function migrate_v6(PDO $pdo): void
+{
+    $pdo->exec('CREATE TABLE IF NOT EXISTS recurring_skips (recurring_id INTEGER NOT NULL REFERENCES recurring(id), period TEXT NOT NULL, PRIMARY KEY (recurring_id, period))');
+    $pdo->exec('ALTER TABLE recurring ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0');
+    $pdo->exec('PRAGMA user_version = 6');
 }

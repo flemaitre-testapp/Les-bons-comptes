@@ -105,6 +105,7 @@ const AUDIT_LABELS = [
     'entry.comment' => 'Commentaire',
     'recurring.create' => 'Charge récurrente créée',
     'recurring.update' => 'Charge récurrente modifiée',
+    'recurring.stop' => 'Charge récurrente supprimée',
     'recurring.generate' => 'Charges récurrentes générées',
     'settings.update' => 'Réglages modifiés',
     'income.update' => 'Revenus mis à jour',
