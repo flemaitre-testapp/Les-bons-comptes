@@ -340,6 +340,9 @@ function split_fields(string $mode, string $custom): string
         'perso_b' => ['Dépense perso de ' . $B . ' (100 % ' . $B . ')', 0],
         'custom' => ['Autre', ''],
     ];
+    if (income_bp() !== null) {
+        $opts = array_merge(['income' => ['Selon les revenus : ' . $A . ' ' . pct(income_bp()) . ', ' . $B . ' ' . pct(10000 - income_bp()), income_bp() / 100]], $opts);
+    }
     $html = '<div class="field"><span class="lbl">Répartition</span><div class="seg seg-col">';
     foreach ($opts as $k => [$l, $bp]) {
         $html .= '<label><input type="radio" name="mode" value="' . $k . '"' . ($mode === $k ? ' checked' : '')
@@ -359,6 +362,7 @@ function split_mode_of(int $bp, ?int $fairBp): string
         $bp === 5000 => 'half',
         $bp === 10000 => 'perso_a',
         $bp === 0 => 'perso_b',
+        $bp === income_bp() => 'income',
         default => 'custom',
     };
 }
@@ -553,6 +557,9 @@ function split_chips(string $current, string $customVal = ''): string
         'perso_b' => 'Perso ' . $Bn,
         'custom' => 'Autre %',
     ];
+    if (income_bp() !== null) {
+        $opts = array_merge(['income' => 'Revenus ' . rule_label(income_bp())], $opts);
+    }
     $html = '<div class="pills">';
     foreach ($opts as $k => $l) {
         $html .= '<label><input type="radio" name="mode" value="' . $k . '"' . ($current === $k ? ' checked' : '') . '><span>' . h($l) . '</span></label>';

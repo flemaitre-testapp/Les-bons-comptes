@@ -157,7 +157,7 @@ $rows = q("SELECT * FROM entries WHERE cancelled = 0 AND (
                (op_date BETWEEN ? AND ? AND NOT (kind = 'remboursement' AND period IS NOT NULL AND period <> ?))
                OR (kind = 'remboursement' AND period = ?))
            ORDER BY CASE WHEN kind = 'remboursement' THEN 2 WHEN recurring_id IS NULL THEN 1 ELSE 0 END,
-                    CASE WHEN part_a_bp IN (0, 10000) THEN 1 ELSE 0 END, op_date, id", [$first, $last, $m, $m])->fetchAll();
+                    CASE WHEN part_a_bp IN (0, 10000) THEN 1 ELSE 0 END, op_date, label, id", [$first, $last, $m, $m])->fetchAll();
 $mb = balance('all', $last, $first);
 $global = balance('all');
 $ib = income_bp();
@@ -412,14 +412,15 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
 
       <?php if (can_adjust($e, $me)): ?>
         <details class="fiche-more">
-          <summary><?= is_admin() ? 'Corriger le montant' : 'Proposer un autre montant' ?></summary>
-          <form method="post" class="form adjust">
+          <summary><?= is_admin() ? 'Montant et répartition' : 'Proposer un autre montant' ?></summary>
+          <form method="post" class="form adjust"<?= is_admin() ? ' data-auto' : '' ?>>
             <?= csrf_field() ?><input type="hidden" name="action" value="adjust"><input type="hidden" name="id" value="<?= $id ?>">
+            <?php if ($e['recurring_id'] && is_admin()): ?><label class="check"><input type="checkbox" name="only_month" value="1"> Seulement ce mois-ci</label><?php endif; ?>
             <label>Montant (€) <input name="amount" value="<?= h(number_format($e['amount_cents'] / 100, 2, ',', '')) ?>" inputmode="decimal" required></label>
             <?php $cur = split_mode_of($bp, null); ?>
             <?= split_chips($cur, $cur === 'custom' ? str_replace('.', ',', (string)($bp / 100)) : '') ?>
-            <input name="reason" maxlength="500" placeholder="<?= is_admin() ? 'Pourquoi ? (facultatif)' : 'Pourquoi ?' ?>" aria-label="Raison"<?= is_admin() ? '' : ' required' ?>>
-            <?php if ($e['recurring_id'] && is_admin()): ?><label class="check"><input type="checkbox" name="only_month" value="1"> Seulement ce mois-ci</label><?php elseif ($e['recurring_id']): ?><label class="check"><input type="checkbox" name="future" value="1"> Aussi les mois suivants</label><?php endif; ?>
+            <?php if (!is_admin()): ?><input name="reason" maxlength="500" placeholder="Pourquoi ?" aria-label="Raison" required><?php endif; ?>
+            <?php if ($e['recurring_id'] && !is_admin()): ?><label class="check"><input type="checkbox" name="future" value="1"> Aussi les mois suivants</label><?php endif; ?>
             <button class="btn small"><?= is_admin() ? 'Corriger' : 'Envoyer' ?></button>
           </form>
         </details>

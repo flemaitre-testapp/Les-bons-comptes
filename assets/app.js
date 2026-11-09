@@ -110,6 +110,32 @@
     });
   });
 
+  // Montant ou répartition modifiés : enregistrés tout seuls, sans bouton
+  document.querySelectorAll('form[data-auto]').forEach(function (f) {
+    var timer;
+    var submit = f.querySelector('button');
+    if (submit) submit.hidden = true;
+    function save() {
+      clearTimeout(timer);
+      timer = setTimeout(function () { f.requestSubmit(); }, 250);
+    }
+    var pct = f.querySelector('input[name=part_a]');
+    var customRadio = f.querySelector('input[name=mode][value=custom]');
+    f.querySelectorAll('input[name=mode]').forEach(function (r) {
+      r.addEventListener('change', function () {
+        if (r.value === 'custom') { pct.focus(); return; }
+        save();
+      });
+    });
+    pct.addEventListener('input', function () { customRadio.checked = true; });
+    pct.addEventListener('change', function () { if (pct.value.trim() !== '') save(); });
+    f.querySelector('input[name=amount]').addEventListener('change', save);
+    // Entrée dans un champ : même enregistrement, sans passer par le bouton masqué
+    f.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') { ev.preventDefault(); save(); }
+    });
+  });
+
   // Impression du relevé
   document.querySelectorAll('[data-print]').forEach(function (b) {
     b.addEventListener('click', function () { window.print(); });
