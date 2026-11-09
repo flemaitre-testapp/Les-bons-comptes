@@ -107,7 +107,7 @@ if (is_post()) {
             } elseif ($amount === (int)$e['amount_cents'] && $bp === (int)$e['part_a_bp']) {
                 flash('info', 'Rien n\'a changé.');
             } elseif (is_admin()) {
-                $anchor = adjust_entry($e, $amount, $bp, $reason, post('future') === '1');
+                $anchor = adjust_entry($e, $amount, $bp, $reason, $e['recurring_id'] && post('only_month') !== '1');
                 flash('ok', 'Corrigé : ' . money($amount) . '.');
             } else {
                 propose_adjust($e, $uid, $amount, $bp, $reason, post('future') === '1');
@@ -211,8 +211,12 @@ foreach ($rows as $e) {
         $payments[] = $e;
     }
 }
-$rest = $du - $paid;
-$trop = $rest !== 0 && ($du === 0 || ($rest > 0) !== ($du > 0));
+$carry = carry_before($m);
+$rest = $carry + $du - $paid;
+$base = $carry + $du;
+$trop = $rest !== 0 && ($base === 0 || ($rest > 0) !== ($base > 0));
+$owedA += max($carry, 0);
+$owedB += max(-$carry, 0);
 $debtor = $rest > 0 ? $A : $B;
 $creditor = $rest > 0 ? $B : $A;
 $otherTodo = (int)q("SELECT COUNT(*) FROM entries WHERE cancelled = 0 AND $myCol = 0 AND substr(op_date, 1, 7) <> ?", [$m])->fetchColumn();
@@ -281,7 +285,7 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
     <?php endif; ?>
   </p>
   <p class="hero-amount"><?= money(abs($rest)) ?></p>
-  <p class="hero-note">Dû pour le mois <?= money(abs($du)) ?> · déjà payé <?= money(abs($paid)) ?><?= $litigeTotal ? ' · ' . money($litigeTotal) . ' en litige' : '' ?></p>
+  <p class="hero-note"><?php if ($carry): ?>Report du mois d'avant : <?= h(user_name($carry > 0 ? $A : $B)) ?> doit <?= money(abs($carry)) ?><br><?php endif; ?>Dû pour le mois <?= money(abs($du)) ?> · déjà payé <?= money(abs($paid)) ?><?= $litigeTotal ? ' · ' . money($litigeTotal) . ' en litige' : '' ?></p>
   <div class="hero-actions">
     <a class="btn" href="<?= url('new') ?>">+ Dépense</a>
     <button type="button" class="btn btn-ghost" data-open="pay-dialog">Paiement reçu ou versé</button>
@@ -415,7 +419,7 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
             <?php $cur = split_mode_of($bp, null); ?>
             <?= split_chips($cur, $cur === 'custom' ? str_replace('.', ',', (string)($bp / 100)) : '') ?>
             <input name="reason" maxlength="500" placeholder="<?= is_admin() ? 'Pourquoi ? (facultatif)' : 'Pourquoi ?' ?>" aria-label="Raison"<?= is_admin() ? '' : ' required' ?>>
-            <?php if ($e['recurring_id']): ?><label class="check"><input type="checkbox" name="future" value="1"> Aussi les mois suivants</label><?php endif; ?>
+            <?php if ($e['recurring_id'] && is_admin()): ?><label class="check"><input type="checkbox" name="only_month" value="1"> Seulement ce mois-ci</label><?php elseif ($e['recurring_id']): ?><label class="check"><input type="checkbox" name="future" value="1"> Aussi les mois suivants</label><?php endif; ?>
             <button class="btn small"><?= is_admin() ? 'Corriger' : 'Envoyer' ?></button>
           </form>
         </details>
@@ -479,6 +483,7 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
         <td class="r"><?= $ob ? money($ob) : '' ?></td>
       </tr>
     <?php endforeach; ?>
+    <?php if ($carry): ?><tr><td>Report du mois d'avant</td><td class="r"></td><td class="r"><?= $carry > 0 ? money($carry) : '' ?></td><td class="r"><?= $carry < 0 ? money(-$carry) : '' ?></td></tr><?php endif; ?>
     </tbody>
     <tfoot>
       <tr><td>Totaux</td><td class="r"><?= money($mb['total']) ?></td><td class="r"><?= money($owedA) ?></td><td class="r"><?= money($owedB) ?></td></tr>

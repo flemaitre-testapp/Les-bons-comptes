@@ -36,6 +36,15 @@ if (!in_array($page, ['login', 'setup'], true)) {
         error_log((string)$ex);
         @file_put_contents(DATA_DIR . '/erreurs.log', '[' . date('Y-m-d H:i:s') . '] remise à zéro des commentaires : ' . $ex . "\n\n", FILE_APPEND);
     }
+    try {
+        reset_validation_nov2026();
+    } catch (Throwable $ex) {
+        error_log((string)$ex);
+        @file_put_contents(DATA_DIR . '/erreurs.log', '[' . date('Y-m-d H:i:s') . '] remise à valider : ' . $ex . "\n\n", FILE_APPEND);
+        if (db()->inTransaction()) {
+            db()->rollBack();
+        }
+    }
     if ($me['must_change_pw'] && !in_array($page, ['account', 'logout'], true)) {
         flash('info', 'Choisis ton mot de passe personnel pour continuer.');
         redirect('account');

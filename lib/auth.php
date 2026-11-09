@@ -376,3 +376,18 @@ function reset_comments_once(): void
     set_setting('comments_reset_v4', '1');
     audit('comments.reset', null, null, ['commentaires_supprimes' => $nc, 'propositions_supprimees' => $np]);
 }
+
+/** Remise à valider de novembre 2026, une seule fois. */
+function reset_validation_nov2026(): void
+{
+    if (!is_admin() || setting('validation_reset_2026_11') === '1') {
+        return;
+    }
+    db()->beginTransaction();
+    $n = q("UPDATE entries SET ok_a = 0, ok_a_at = NULL, ok_b = 0, ok_b_at = NULL,
+            status = CASE WHEN status = 'conteste' THEN status ELSE 'en_attente' END
+            WHERE cancelled = 0 AND substr(op_date, 1, 7) = '2026-11'")->rowCount();
+    audit('validation.reset', null, null, ['mois' => 'novembre 2026', 'lignes' => $n]);
+    set_setting('validation_reset_2026_11', '1');
+    db()->commit();
+}

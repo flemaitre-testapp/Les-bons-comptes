@@ -57,12 +57,21 @@ if (is_post()) {
 
     if (!$errors) {
         db()->beginTransaction();
+        $recId = null;
+        if (!$replace && post('monthly') === '1') {
+            $mode = $bp === 5000 ? 'half' : 'custom';
+            q('INSERT INTO recurring(label, category_id, amount_cents, paid_by, mode, part_a_bp, day_of_month, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)',
+                [$f['label'], $cat, $amount, $payer, $mode, $bp, min(28, (int)substr($f['op_date'], 8, 2)), now()]);
+            $recId = (int)db()->lastInsertId();
+            audit('recurring.create', 'recurring', $recId, ['libelle' => $f['label'], 'montant' => money($amount), 'payeur' => user_name($payer), 'repartition' => rec_label($mode, $bp)]);
+        }
         $id = create_entry([
             'kind' => 'depense', 'op_date' => $f['op_date'], 'label' => $f['label'],
             'category_id' => $cat, 'amount_cents' => $amount, 'paid_by' => $payer, 'part_a_bp' => $bp,
             'notes' => $f['notes'],
             'receipt' => $receipt[0] ?? null, 'receipt_name' => $receipt[1] ?? null, 'receipt_sha' => $receipt[2] ?? null,
             'replaces' => $replace ? (int)$replace['id'] : null,
+            'recurring_id' => $recId, 'period' => $recId ? substr($f['op_date'], 0, 7) : null,
         ]);
         if ($replace) {
             $reason = 'Corrigée par l\'opération #' . $id . ' : ' . $f['reason'];
@@ -102,6 +111,7 @@ layout_start($replace ? 'Corriger une dépense' : 'Nouvelle dépense', 'new');
       </div>
     </div>
     <?= split_fields($f['mode'], $f['part_a']) ?>
+    <?php if (!$replace && is_admin()): ?><label class="check"><input type="checkbox" name="monthly" value="1" <?= post('monthly') === '1' ? 'checked' : '' ?>> Revient tous les mois</label><?php endif; ?>
     <details class="more"<?= ($f['category_id'] !== '' || $f['notes'] !== '' || $replace) ? ' open' : '' ?>>
       <summary>Catégorie, note, justificatif</summary>
       <label>Catégorie

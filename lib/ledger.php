@@ -243,11 +243,7 @@ function create_entry(array $d): int
         'created_at' => now(),
     ];
     $e['content_hash'] = entry_hash($e);
-    // Celui qui saisit valide d'office sa propre ligne (pas pour les charges mensuelles automatiques)
-    if (empty($d['recurring_id']) || !empty($d['auto_ok'])) {
-        $e[ok_col((int)$_SESSION['uid'])] = 1;
-        $e[ok_col((int)$_SESSION['uid']) . '_at'] = $e['created_at'];
-    }
+    // Aucune validation d'office : toute nouvelle ligne part à valider.
     $cols = array_keys($e);
     q('INSERT INTO entries(' . implode(',', $cols) . ') VALUES(:' . implode(',:', $cols) . ')', $e);
     $id = (int)db()->lastInsertId();
@@ -470,7 +466,7 @@ function adjust_entry(array $e, int $amount, int $bp, string $reason, bool $futu
         'kind' => 'depense', 'op_date' => $e['op_date'], 'label' => $e['label'], 'category_id' => $e['category_id'],
         'amount_cents' => $amount, 'paid_by' => (int)$e['paid_by'], 'part_a_bp' => $bp, 'notes' => (string)$e['notes'],
         'receipt' => $e['receipt'], 'receipt_name' => $e['receipt_name'], 'receipt_sha' => $e['receipt_sha'],
-        'recurring_id' => $e['recurring_id'], 'period' => $e['period'], 'replaces' => (int)$e['id'], 'auto_ok' => true,
+        'recurring_id' => $e['recurring_id'], 'period' => $e['period'], 'replaces' => (int)$e['id'],
         'recette' => (int)($e['recette'] ?? 0),
     ]);
     q('UPDATE entries SET cancel_reason = ? WHERE id = ?', ['Ajustée par la ligne #' . $id . ' : ' . $reason, $e['id']]);
@@ -489,6 +485,12 @@ function adjust_entry(array $e, int $amount, int $bp, string $reason, bool $futu
                 'avant' => money((int)$r['amount_cents']) . ', ' . rec_label($r['mode'], (int)$r['part_a_bp']),
                 'apres' => money($amount) . ', ' . rec_label($mode, $bp) . ' (mois suivants)',
             ]);
+            // Les mois suivants déjà créés suivent la correction
+            foreach (q('SELECT * FROM entries WHERE recurring_id = ? AND cancelled = 0 AND period > ? AND kind = \'depense\'', [$e['recurring_id'], $e['period']])->fetchAll() as $later) {
+                if ((int)$later['amount_cents'] !== $amount || (int)$later['part_a_bp'] !== $bp) {
+                    adjust_entry($later, $amount, $bp, $reason, false);
+                }
+            }
         }
     }
     return $id;
@@ -588,6 +590,17 @@ function contest_reason(int $entryId): string
     $d = q("SELECT details FROM audit_log WHERE entity = 'entry' AND entity_id = ? AND action = 'entry.contest' ORDER BY id DESC LIMIT 1", [$entryId])->fetchColumn();
     $d = $d ? json_decode($d, true) : [];
     return (string)($d['motif'] ?? '');
+}
+
+/** Report à l'entrée d'un mois : ce qui reste dû des mois précédents. Positif = A doit à B. */
+function carry_before(string $ym): int
+{
+    $carry = 0;
+    foreach (q("SELECT * FROM entries WHERE cancelled = 0 AND (CASE WHEN kind = 'remboursement' AND period IS NOT NULL THEN period ELSE substr(op_date, 1, 7) END) < ?", [$ym]) as $e) {
+        [$oa, $ob] = line_owed($e);
+        $carry += $oa - $ob;
+    }
+    return $carry;
 }
 
 /** Empêche une charge fixe retirée d'un mois d'y être recréée automatiquement. */
