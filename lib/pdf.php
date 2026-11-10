@@ -190,49 +190,13 @@ function recap_family(array $e): array
     return array_values(array_unique($ids));
 }
 
-/** Tout ce qui a été écrit sur une ligne et ses versions : note, commentaires, corrections, propositions, contestations. */
+/** Le dernier commentaire écrit sur une ligne, toutes versions confondues. */
 function recap_notes_for(array $ids, ?array $e = null): array
 {
     $in = implode(',', array_map('intval', $ids)) ?: '0';
-    $items = [];
-    if ($e && trim((string)$e['notes']) !== '' && !preg_match('/^(Charge mensuelle|Paiement effectué)/u', (string)$e['notes'])) {
-        $items[] = ['', 'Note : ' . $e['notes']];
-    }
-    foreach (q("SELECT * FROM comments WHERE entry_id IN ($in)") as $c) {
-        $items[] = [$c['created_at'], user_name((int)$c['user_id']) . ', ' . fdate($c['created_at']) . ' : ' . $c['body']];
-    }
-    foreach (q("SELECT * FROM proposals WHERE entry_id IN ($in)") as $p) {
-        $st = ['en_attente' => 'en attente', 'acceptee' => 'acceptée', 'refusee' => 'refusée', 'retiree' => 'retirée'][$p['status']] ?? $p['status'];
-        $t = user_name((int)$p['user_id']) . ', ' . fdate($p['created_at']) . ' : propose ' . money((int)$p['amount_cents']) . ' (' . $st . ')' . ($p['reason'] !== '' ? '. ' . $p['reason'] : '');
-        if ($p['decision_note']) $t .= '. Réponse : ' . $p['decision_note'];
-        $items[] = [$p['created_at'], $t];
-    }
-    foreach (q("SELECT * FROM audit_log WHERE entity = 'entry' AND entity_id IN ($in) AND action IN ('entry.contest', 'entry.cancel') ORDER BY id") as $a) {
-        $d = json_decode((string)$a['details'], true) ?: [];
-        $who = user_name((int)$a['user_id']) . ', ' . fdate($a['ts']);
-        if ($a['action'] === 'entry.contest') {
-            $items[] = [$a['ts'], $who . ' : conteste' . (!empty($d['motif']) ? ', ' . $d['motif'] : '')];
-        } else {
-            $why = trim((string)($d['raison'] ?? ''));
-            $chg = !empty($d['avant']) && !empty($d['apres']) ? $d['avant'] . ' → ' . $d['apres'] : '';
-            if ($chg !== '') {
-                $items[] = [$a['ts'], $who . ' : corrigé ' . $chg . ($why !== '' && $why !== 'Correction' ? '. ' . $why : '')];
-            } elseif ($why !== '') {
-                $items[] = [$a['ts'], $who . ' : annulé. ' . $why];
-            }
-        }
-    }
-    usort($items, fn($x, $y) => strcmp((string)$x[0], (string)$y[0]));
-    $seen = [];
-    $out = [];
-    foreach ($items as $i) {
-        $t = '› ' . preg_replace('/\s+/u', ' ', $i[1]);
-        if (!isset($seen[$t])) {
-            $seen[$t] = true;
-            $out[] = $t;
-        }
-    }
-    return $out;
+    $c = q("SELECT * FROM comments WHERE entry_id IN ($in) ORDER BY created_at DESC, id DESC LIMIT 1")->fetch();
+    if (!$c) return [];
+    return ['› ' . user_name((int)$c['user_id']) . ', ' . fdate($c['created_at']) . ' : ' . preg_replace('/\s+/u', ' ', $c['body'])];
 }
 
 function recap_notes(array $rows): array
