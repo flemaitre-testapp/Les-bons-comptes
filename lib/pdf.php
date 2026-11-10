@@ -168,39 +168,97 @@ class MiniPdf
     }
 }
 
-/** Tout ce qui a été écrit sur chaque ligne : commentaires (versions précédentes comprises), contestations, propositions. */
+/** Toutes les versions d'une même ligne dans le mois (corrections, recréations, annulations). */
+function recap_family(array $e): array
+{
+    $ids = [(int)$e['id']];
+    $prev = $e['replaces'] ?? null;
+    $guard = 0;
+    while ($prev && $guard++ < 50) {
+        $ids[] = (int)$prev;
+        $prev = q('SELECT replaces FROM entries WHERE id = ?', [$prev])->fetchColumn();
+    }
+    $m = $e['period'] ?: substr((string)$e['op_date'], 0, 7);
+    if ($e['recurring_id']) {
+        $more = q("SELECT id FROM entries WHERE cancelled = 1 AND recurring_id = ? AND (period = ? OR substr(op_date, 1, 7) = ?)", [$e['recurring_id'], $m, $m]);
+    } else {
+        $more = q("SELECT id FROM entries WHERE cancelled = 1 AND kind = ? AND label = ? AND substr(op_date, 1, 7) = ?", [$e['kind'], $e['label'], $m]);
+    }
+    foreach ($more as $r) {
+        $ids[] = (int)$r['id'];
+    }
+    return array_values(array_unique($ids));
+}
+
+/** Tout ce qui a été écrit sur une ligne et ses versions : note, commentaires, corrections, propositions, contestations. */
+function recap_notes_for(array $ids, ?array $e = null): array
+{
+    $in = implode(',', array_map('intval', $ids)) ?: '0';
+    $items = [];
+    if ($e && trim((string)$e['notes']) !== '' && !preg_match('/^(Charge mensuelle|Paiement effectué)/u', (string)$e['notes'])) {
+        $items[] = ['', 'Note : ' . $e['notes']];
+    }
+    foreach (q("SELECT * FROM comments WHERE entry_id IN ($in)") as $c) {
+        $items[] = [$c['created_at'], user_name((int)$c['user_id']) . ', ' . fdate($c['created_at']) . ' : ' . $c['body']];
+    }
+    foreach (q("SELECT * FROM proposals WHERE entry_id IN ($in)") as $p) {
+        $st = ['en_attente' => 'en attente', 'acceptee' => 'acceptée', 'refusee' => 'refusée', 'retiree' => 'retirée'][$p['status']] ?? $p['status'];
+        $t = user_name((int)$p['user_id']) . ', ' . fdate($p['created_at']) . ' : propose ' . money((int)$p['amount_cents']) . ' (' . $st . ')' . ($p['reason'] !== '' ? '. ' . $p['reason'] : '');
+        if ($p['decision_note']) $t .= '. Réponse : ' . $p['decision_note'];
+        $items[] = [$p['created_at'], $t];
+    }
+    foreach (q("SELECT * FROM audit_log WHERE entity = 'entry' AND entity_id IN ($in) AND action IN ('entry.contest', 'entry.cancel') ORDER BY id") as $a) {
+        $d = json_decode((string)$a['details'], true) ?: [];
+        $who = user_name((int)$a['user_id']) . ', ' . fdate($a['ts']);
+        if ($a['action'] === 'entry.contest') {
+            $items[] = [$a['ts'], $who . ' : conteste' . (!empty($d['motif']) ? ', ' . $d['motif'] : '')];
+        } else {
+            $why = trim((string)($d['raison'] ?? ''));
+            $chg = !empty($d['avant']) && !empty($d['apres']) ? $d['avant'] . ' → ' . $d['apres'] : '';
+            if ($chg !== '') {
+                $items[] = [$a['ts'], $who . ' : corrigé ' . $chg . ($why !== '' && $why !== 'Correction' ? '. ' . $why : '')];
+            } elseif ($why !== '') {
+                $items[] = [$a['ts'], $who . ' : annulé. ' . $why];
+            }
+        }
+    }
+    usort($items, fn($x, $y) => strcmp((string)$x[0], (string)$y[0]));
+    $seen = [];
+    $out = [];
+    foreach ($items as $i) {
+        $t = '› ' . preg_replace('/\s+/u', ' ', $i[1]);
+        if (!isset($seen[$t])) {
+            $seen[$t] = true;
+            $out[] = $t;
+        }
+    }
+    return $out;
+}
+
 function recap_notes(array $rows): array
 {
     $notes = [];
     foreach ($rows as $e) {
-        $id = (int)$e['id'];
-        $chain = [$id];
-        $prev = $e['replaces'] ?? null;
-        $guard = 0;
-        while ($prev && $guard++ < 20) {
-            $chain[] = (int)$prev;
-            $prev = q('SELECT replaces FROM entries WHERE id = ?', [$prev])->fetchColumn();
-        }
-        $in = implode(',', $chain);
-        $items = [];
-        foreach (q("SELECT * FROM comments WHERE entry_id IN ($in)") as $c) {
-            $items[] = [$c['created_at'], user_name((int)$c['user_id']) . ', ' . fdate($c['created_at']) . ' : ' . $c['body']];
-        }
-        foreach (q("SELECT * FROM proposals WHERE entry_id IN ($in)") as $p) {
-            $st = ['en_attente' => 'en attente', 'acceptee' => 'acceptée', 'refusee' => 'refusée', 'retiree' => 'retirée'][$p['status']] ?? $p['status'];
-            $t = user_name((int)$p['user_id']) . ', ' . fdate($p['created_at']) . ' : propose ' . money((int)$p['amount_cents']) . ' (' . $st . '). ' . $p['reason'];
-            if ($p['decision_note']) $t .= ' Réponse : ' . $p['decision_note'];
-            $items[] = [$p['created_at'], $t];
-        }
-        foreach (q("SELECT * FROM audit_log WHERE entity = 'entry' AND entity_id IN ($in) AND action = 'entry.contest' ORDER BY id") as $a) {
-            $d = json_decode((string)$a['details'], true) ?: [];
-            $items[] = [$a['ts'], user_name((int)$a['user_id']) . ', ' . fdate($a['ts']) . ' : conteste' . (!empty($d['motif']) ? ', ' . $d['motif'] : '')];
-        }
-        if (!$items) continue;
-        usort($items, fn($x, $y) => strcmp((string)$x[0], (string)$y[0]));
-        $notes[$id] = array_map(fn($i) => '› ' . str_replace(["\r", "\n"], ' ', $i[1]), $items);
+        $n = recap_notes_for(recap_family($e), $e);
+        if ($n) $notes[(int)$e['id']] = $n;
     }
     return $notes;
+}
+
+/** Lignes retirées du mois (annulées sans être remplacées), avec ce qui a été écrit dessus. */
+function recap_removed(string $m, array $rows): array
+{
+    $used = [];
+    foreach ($rows as $e) {
+        foreach (recap_family($e) as $id) $used[$id] = true;
+    }
+    $out = [];
+    foreach (q("SELECT * FROM entries WHERE cancelled = 1 AND (period = ? OR (period IS NULL AND substr(op_date, 1, 7) = ?)) ORDER BY op_date, id", [$m, $m]) as $e) {
+        if (isset($used[(int)$e['id']])) continue;
+        if (q('SELECT 1 FROM entries WHERE replaces = ?', [$e['id']])->fetchColumn()) continue;
+        $out[] = ['e' => $e, 'notes' => recap_notes_for([(int)$e['id']], $e)];
+    }
+    return $out;
 }
 
 /** Lignes « activités et placements » des enfants : catégorie ou libellé. */
@@ -463,6 +521,31 @@ function recap_pdf(string $m): string
             $y += 4;
         }
         $y += 18;
+    }
+
+    $removed = recap_removed($m, $s['rows']);
+    if ($removed) {
+        if ($y > $bottom - 50) $newPage();
+        $pdf->text($L, $y, 'Lignes retirées ce mois-ci', 9.5, true, $ink);
+        $y += 5;
+        $pdf->rect($L, $y, $R - $L, .7, $line);
+        $y += 12;
+        foreach ($removed as $r) {
+            $e = $r['e'];
+            $parts = [];
+            foreach ($r['notes'] as $t) {
+                foreach ($pdf->wrap($t, $R - $L - 24, 7) as $part) $parts[] = $part;
+            }
+            if ($y + $rh + count($parts) * 10 > $bottom) $newPage();
+            $pdf->text($L + 6, $y, $pdf->fit($e['label'], $rTot - $L - 60, $fs), $fs, false, $muted);
+            $pdf->text($rTot, $y, money((int)$e['amount_cents']), $fs, false, $muted, 'R');
+            $pdf->text($rB, $y, 'retirée', $fs, false, $muted, 'R');
+            foreach ($parts as $part) {
+                $y += 10;
+                $pdf->text($L + 14, $y, $part, 7, false, $ink);
+            }
+            $y += $rh;
+        }
     }
 
     $pdf->eachPage(function (MiniPdf $p, int $i, int $n) use ($L, $R, $muted, $line) {
