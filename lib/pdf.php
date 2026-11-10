@@ -150,7 +150,14 @@ class MiniPdf
     }
 }
 
-/** PDF récapitulatif d'un mois (YYYY-MM) : le résultat, comment on y arrive, puis le détail. */
+/** Lignes « activités et placements » des enfants : catégorie ou libellé. */
+function is_kids_line(array $e, array $catNames): bool
+{
+    $cat = $e['category_id'] ? ($catNames[(int)$e['category_id']] ?? '') : '';
+    return (bool)preg_match('/activit|épargne|epargne|placement|livret/iu', $cat . ' ' . $e['label']);
+}
+
+/** PDF récapitulatif d'un mois (YYYY-MM), sur une page si possible. */
 function recap_pdf(string $m): string
 {
     $s = month_summary($m);
@@ -170,46 +177,31 @@ function recap_pdf(string $m): string
     $col = fn(int $uid) => $uid === $A ? $cA : $cB;
     $white = [1, 1, 1];
 
+    $catNames = [];
+    foreach (q('SELECT id, name FROM categories') as $c) {
+        $catNames[(int)$c['id']] = $c['name'];
+    }
+    $comments = [];
+    $ids = implode(',', array_map(fn($e) => (int)$e['id'], $s['rows'])) ?: '0';
+    foreach (q("SELECT * FROM comments WHERE entry_id IN ($ids) ORDER BY id") as $c) {
+        $comments[(int)$c['entry_id']][] = $c;
+    }
+
     $pdf = new MiniPdf();
-    $L = 42.0;
-    $R = MiniPdf::W - 42;
+    $L = 36.0;
+    $R = MiniPdf::W - 36;
     $W = $R - $L;
-    $bottom = MiniPdf::H - 70;
+    $bottom = MiniPdf::H - 52;
 
     // En-tête
-    $pdf->text($L, 50, 'LES BONS COMPTES', 8, true, $muted);
-    $pdf->text($R, 50, 'Édité le ' . date('d/m/Y'), 8, false, $muted, 'R');
-    $pdf->text($L, 80, 'Récap de ' . month_label($m), 24, true, $ink);
+    $pdf->text($L, 40, 'LES BONS COMPTES', 7.5, true, $muted);
+    $pdf->text($R, 40, 'Édité le ' . date('d/m/Y'), 7.5, false, $muted, 'R');
+    $pdf->text($L, 64, 'Récap de ' . month_label($m), 20, true, $ink);
 
-    // Résultat du mois
-    $y = 100.0;
-    $pdf->roundRect($L, $y, $W, 104, 14, $brand);
-    if ($s['rest'] === 0) {
-        $big = 'Mois soldé';
-        $who = 'Personne ne doit rien à personne ce mois-ci.';
-    } elseif ($s['trop']) {
-        $big = money(abs($s['rest']));
-        $who = user_name($s['debtor']) . ' a reçu trop et doit rendre cette somme à ' . user_name($s['creditor']) . '.';
-    } else {
-        $big = money(abs($s['rest']));
-        $who = user_name($s['debtor']) . ' doit cette somme à ' . user_name($s['creditor']) . '.';
-    }
-    $pdf->text($L + 22, $y + 28, 'RESTE À RÉGLER POUR ' . mb_strtoupper(month_label($m)), 8.5, true, [.72, .83, .79]);
-    $pdf->text($L + 22, $y + 66, $big, 32, true, $white);
-    $pdf->text($L + 22, $y + 88, $who, 10.5, false, [.88, .93, .91]);
-
-    // Validation
-    $deps = array_values(array_filter($s['rows'], fn($e) => true));
-    $n = count($deps);
-    $okA = count(array_filter($deps, fn($e) => !empty($e['ok_a'])));
-    $okB = count(array_filter($deps, fn($e) => !empty($e['ok_b'])));
-    $y += 122;
-    $pdf->text($L, $y, 'Lignes validées : ' . $nA . ' ' . $okA . '/' . $n . '   ·   ' . $nB . ' ' . $okB . '/' . $n, 9, false, $muted);
-
-    // Comment on arrive à ce montant
-    $steps = [];
+    // Totaux et lignes par blocs
     $bucket = ['depB' => 0, 'depA' => 0, 'recB' => 0, 'recA' => 0, 'pay' => 0];
     $tot = ['all' => 0, 'a' => 0, 'b' => 0];
+    $kids = ['all' => 0, 'a' => 0];
     foreach ($s['rows'] as $e) {
         [$oa, $ob] = line_owed($e);
         if ($e['kind'] !== 'depense') {
@@ -217,163 +209,213 @@ function recap_pdf(string $m): string
             continue;
         }
         $rec = !empty($e['recette']);
-        $payA = (int)$e['paid_by'] === $A;
-        $bucket[($rec ? 'rec' : 'dep') . ($payA ? 'A' : 'B')] += $oa - $ob;
+        $bucket[($rec ? 'rec' : 'dep') . ((int)$e['paid_by'] === $A ? 'A' : 'B')] += $oa - $ob;
         if (!$rec) {
             $ls = line_shares($e);
             $tot['all'] += (int)$e['amount_cents'];
             $tot['a'] += $ls['a'];
             $tot['b'] += $ls['b'];
+            if (is_kids_line($e, $catNames)) {
+                $kids['all'] += (int)$e['amount_cents'];
+                $kids['a'] += $ls['a'];
+            }
         }
     }
-    if ($s['carry']) $steps[] = ['Report du mois précédent', 'Ce qui restait à régler', $s['carry']];
-    if ($bucket['depB']) $steps[] = ['Dépenses payées par ' . $nB, 'Part de ' . $nA . ' à lui rembourser', $bucket['depB']];
-    if ($bucket['depA']) $steps[] = ['Dépenses payées par ' . $nA, 'Part de ' . $nB . ' à lui rembourser', $bucket['depA']];
-    if ($bucket['recB']) $steps[] = ['Argent perçu par ' . $nB, 'Part qui revient à ' . $nA, $bucket['recB']];
-    if ($bucket['recA']) $steps[] = ['Argent perçu par ' . $nA, 'Part qui revient à ' . $nB, $bucket['recA']];
-    if ($bucket['pay']) $steps[] = ['Paiements déjà faits', 'Virements, chèques, espèces', $bucket['pay']];
 
-    $y += 34;
-    $pdf->text($L, $y, 'Comment on arrive à ce montant', 13, true, $ink);
-    $y += 14;
-    $rowH = 34.0;
-    $boxH = count($steps) * $rowH + 44;
-    $pdf->roundRect($L, $y, $W, $boxH, 10, $paper);
-    $yy = $y + 22;
-    foreach ($steps as $i => [$t, $sub, $v]) {
-        $owes = $v > 0 ? $A : $B;
-        $pdf->text($L + 16, $yy, $t, 10.5, true, $ink);
-        $pdf->text($L + 16, $yy + 13, $sub, 8.5, false, $muted);
-        $tag = $owes === $A ? $nA . ' doit' : $nB . ' doit';
-        $amt = money(abs($v));
-        $pdf->text($R - 16, $yy + 5, $amt, 11.5, true, $col($owes), 'R');
-        $pdf->text($R - 16 - $pdf->width($amt, 11.5, true) - 8, $yy + 5, $tag, 8.5, false, $muted, 'R');
-        $yy += $rowH;
-        $pdf->rect($L + 16, $yy - 13, $W - 32, .6, $line);
-    }
-    $final = $s['rest'] === 0 ? 'Mois soldé' : money(abs($s['rest']));
-    $pdf->text($L + 16, $yy + 4, 'Résultat', 11, true, $ink);
-    if ($s['rest'] !== 0) {
-        $pdf->text($R - 16, $yy + 4, $final, 13, true, $col($s['debtor']), 'R');
-        $pdf->text($R - 16 - $pdf->width($final, 13, true) - 8, $yy + 4, user_name($s['debtor']) . ' doit', 9, true, $ink, 'R');
+    // Bandeau résultat (gauche) + validations (droite)
+    $y = 78.0;
+    $cardH = 66.0;
+    $pdf->roundRect($L, $y, $W, $cardH, 12, $brand);
+    $pdf->text($L + 18, $y + 20, 'RESTE À RÉGLER', 7.5, true, [.72, .83, .79]);
+    if ($s['rest'] === 0) {
+        $pdf->text($L + 18, $y + 48, 'Mois soldé', 24, true, $white);
     } else {
-        $pdf->text($R - 16, $yy + 4, $final, 12, true, $green, 'R');
+        $big = money(abs($s['rest']));
+        $pdf->text($L + 18, $y + 48, $big, 24, true, $white);
+        $who = $s['trop'] ? user_name($s['debtor']) . ' a reçu trop, à rendre à ' . user_name($s['creditor'])
+            : user_name($s['debtor']) . ' doit cette somme à ' . user_name($s['creditor']);
+        $pdf->text($L + 18 + $pdf->width($big, 24, true) + 12, $y + 47, $who, 10, false, [.88, .93, .91]);
     }
-    $y += $boxH + 30;
+    $n = count($s['rows']);
+    $okA = count(array_filter($s['rows'], fn($e) => !empty($e['ok_a'])));
+    $okB = count(array_filter($s['rows'], fn($e) => !empty($e['ok_b'])));
+    $pdf->text($R - 18, $y + 20, 'LIGNES VALIDÉES', 7.5, true, [.72, .83, .79], 'R');
+    $pdf->text($R - 18, $y + 36, $nA . ' ' . $okA . '/' . $n, 9.5, true, $white, 'R');
+    $pdf->text($R - 18, $y + 50, $nB . ' ' . $okB . '/' . $n, 9.5, true, $white, 'R');
+    $y += $cardH + 24;
 
-    // Répartition des dépenses du mois
+    // Comment on arrive à ce montant (colonne gauche) + parts (colonne droite)
+    $steps = [];
+    if ($s['carry']) $steps[] = ['Report du mois précédent', '', $s['carry']];
+    if ($bucket['depB']) $steps[] = ['Dépenses payées par ' . $nB, 'part de ' . $nA, $bucket['depB']];
+    if ($bucket['depA']) $steps[] = ['Dépenses payées par ' . $nA, 'part de ' . $nB, $bucket['depA']];
+    if ($bucket['recB']) $steps[] = ['Argent perçu par ' . $nB, 'part de ' . $nA, $bucket['recB']];
+    if ($bucket['recA']) $steps[] = ['Argent perçu par ' . $nA, 'part de ' . $nB, $bucket['recA']];
+    if ($bucket['pay']) $steps[] = ['Paiements déjà faits', '', $bucket['pay']];
+
+    $colW = ($W - 16) / 2;
+    $lx = $L;
+    $rx = $L + $colW + 16;
+    $top = $y;
+    $pdf->text($lx, $y, 'Comment on arrive à ce montant', 10.5, true, $ink);
+    $boxY = $y + 8;
+    $rowH = 19.0;
+    $boxH = (count($steps) + 1) * $rowH + 14;
+    $pdf->roundRect($lx, $boxY, $colW, $boxH, 9, $paper);
+    $yy = $boxY + 19;
+    foreach ($steps as [$t, $sub, $v]) {
+        $owes = $v > 0 ? $A : $B;
+        $pdf->text($lx + 11, $yy, $t, 8.5, true, $ink);
+        if ($sub !== '') $pdf->text($lx + 11 + $pdf->width($t, 8.5, true) + 4, $yy, '· ' . $sub, 7.5, false, $muted);
+        $amt = money(abs($v));
+        $pdf->text($lx + $colW - 11, $yy, $amt, 9, true, $col($owes), 'R');
+        $pdf->text($lx + $colW - 11 - $pdf->width($amt, 9, true) - 5, $yy, mb_substr(user_name($owes), 0, 1) . ' doit', 7, false, $muted, 'R');
+        $pdf->rect($lx + 11, $yy + 6, $colW - 22, .5, $line);
+        $yy += $rowH;
+    }
+    $pdf->text($lx + 11, $yy + 1, 'Résultat', 9, true, $ink);
+    if ($s['rest'] !== 0) {
+        $final = money(abs($s['rest']));
+        $pdf->text($lx + $colW - 11, $yy + 1, $final, 10, true, $col($s['debtor']), 'R');
+        $pdf->text($lx + $colW - 11 - $pdf->width($final, 10, true) - 5, $yy + 1, user_name($s['debtor']) . ' doit', 8, true, $ink, 'R');
+    } else {
+        $pdf->text($lx + $colW - 11, $yy + 1, 'Mois soldé', 9.5, true, $green, 'R');
+    }
+    $leftEnd = $boxY + $boxH;
+
+    // Colonne droite : part globale + activités et placements
+    $yr = $top;
     if ($tot['all'] > 0) {
-        $pdf->text($L, $y, 'Les dépenses du mois : ' . money($tot['all']), 13, true, $ink);
-        $y += 14;
-        $wa = $W * $tot['a'] / $tot['all'];
-        $pdf->roundRect($L, $y, $W, 14, 7, $cB);
-        if ($wa > 0) $pdf->roundRect($L, $y, max($wa, 14), 14, 7, $cA);
-        if ($wa > 7 && $wa < $W - 7) $pdf->rect($L + $wa - 7, $y, 7, 14, $cA);
-        $y += 30;
-        $pdf->circle($L + 5, $y - 3.5, 4.5, $cA);
-        $pdf->text($L + 15, $y, 'Part de ' . $nA . ' : ' . money($tot['a']) . ' (' . pct((int)round($tot['a'] * 10000 / $tot['all'])) . ')', 9.5, false, $ink);
-        $pdf->circle($L + $W / 2 + 5, $y - 3.5, 4.5, $cB);
-        $pdf->text($L + $W / 2 + 15, $y, 'Part de ' . $nB . ' : ' . money($tot['b']) . ' (' . pct((int)round($tot['b'] * 10000 / $tot['all'])) . ')', 9.5, false, $ink);
-        $y += 34;
+        $pdf->text($rx, $yr, 'Dépenses du mois : ' . money($tot['all']), 10.5, true, $ink);
+        $yr += 12;
+        $wa = $colW * $tot['a'] / $tot['all'];
+        $pdf->roundRect($rx, $yr, $colW, 10, 5, $cB);
+        if ($wa > 0) $pdf->roundRect($rx, $yr, max($wa, 10), 10, 5, $cA);
+        if ($wa > 5 && $wa < $colW - 5) $pdf->rect($rx + $wa - 5, $yr, 5, 10, $cA);
+        $yr += 24;
+        $pdf->circle($rx + 4, $yr - 3, 3.5, $cA);
+        $pdf->text($rx + 12, $yr, $nA . ' : ' . money($tot['a']) . ' (' . pct((int)round($tot['a'] * 10000 / $tot['all'])) . ')', 8.5, true, $ink);
+        $yr += 14;
+        $pdf->circle($rx + 4, $yr - 3, 3.5, $cB);
+        $pdf->text($rx + 12, $yr, $nB . ' : ' . money($tot['b']) . ' (' . pct((int)round($tot['b'] * 10000 / $tot['all'])) . ')', 8.5, true, $ink);
+        $yr += 14;
+        $ib = income_bp();
+        if ($ib !== null) {
+            $pdf->text($rx, $yr, 'Selon les revenus : ' . $nA . ' ' . pct($ib) . ', ' . $nB . ' ' . pct(10000 - $ib), 7.5, false, $muted);
+            $yr += 14;
+        }
     }
+    if ($kids['all'] > 0) {
+        $yr += 4;
+        $kp = (int)round($kids['a'] * 10000 / $kids['all']);
+        $ibK = income_bp();
+        $boxK = $ibK !== null ? 60.0 : 46.0;
+        $pdf->roundRect($rx, $yr, $colW, $boxK, 9, [.91, .94, .98]);
+        $pdf->text($rx + 11, $yr + 16, 'Activités et placements des enfants', 8.5, true, $ink);
+        $pdf->text($rx + 11, $yr + 33, $nA . ' contribue à ' . pct($kp) . ' : ' . money($kids['a']) . ' sur ' . money($kids['all']), 9, true, $cA);
+        if ($ibK !== null) {
+            $pdf->text($rx + 11, $yr + 48, 'Selon les revenus, sa part serait de ' . pct($ibK) . ' : ' . money((int)round($kids['all'] * $ibK / 10000)) . '.', 7.5, false, $muted);
+        }
+        $yr += $boxK;
+    }
+    $y = max($leftEnd, $yr) + 24;
 
-    // Détail ligne par ligne
+    // Détail
     $groups = [
         'Charges fixes' => fn($e) => $e['kind'] === 'depense' && empty($e['recette']) && $e['recurring_id'],
         'Dépenses ponctuelles' => fn($e) => $e['kind'] === 'depense' && empty($e['recette']) && !$e['recurring_id'],
         'Argent perçu à partager' => fn($e) => $e['kind'] === 'depense' && !empty($e['recette']),
         'Paiements' => fn($e) => $e['kind'] !== 'depense',
     ];
-    $xPay = $L + 196;
-    $xRule = $L + 270;
-    $rTot = $L + 384;
-    $rA = $L + 448;
-    $rB = $R - 8;
+    $xPay = $L + 200;
+    $xRule = $L + 268;
+    $rTot = $L + 392;
+    $rA = $L + 460;
+    $rB = $R - 6;
+    $rh = 14.0;
+    $fs = 8.0;
     $newPage = function () use ($pdf, &$y, $L, $muted, $m) {
         $pdf->addPage();
-        $pdf->text($L, 50, 'LES BONS COMPTES · Récap de ' . month_label($m), 8, true, $muted);
-        $y = 82.0;
+        $pdf->text($L, 40, 'LES BONS COMPTES · Récap de ' . month_label($m), 7.5, true, $muted);
+        $y = 64.0;
     };
     $tableHead = function (string $title, bool $pay) use ($pdf, &$y, $L, $R, $xPay, $xRule, $rTot, $rA, $rB, $ink, $muted, $line, $nA, $nB) {
-        $pdf->text($L, $y, $title, 11.5, true, $ink);
-        $y += 18;
-        $pdf->text($L + 8, $y, $pay ? 'Date' : 'Libellé', 7.5, true, $muted);
-        $pdf->text($xPay, $y, $pay ? 'De' : (str_starts_with($title, 'Argent') ? 'Perçu par' : 'Payé par'), 7.5, true, $muted);
+        $pdf->text($L, $y, $title, 9.5, true, $ink);
         if (!$pay) {
-            $pdf->text($xRule, $y, 'Répartition', 7.5, true, $muted);
-            $pdf->text($rTot, $y, 'Total', 7.5, true, $muted, 'R');
-            $pdf->text($rA, $y, $nA, 7.5, true, $muted, 'R');
-            $pdf->text($rB, $y, $nB, 7.5, true, $muted, 'R');
+            $pdf->text($xPay, $y, str_starts_with($title, 'Argent') ? 'Perçu par' : 'Payé par', 6.5, true, $muted);
+            $pdf->text($xRule, $y, 'Répartition', 6.5, true, $muted);
+            $pdf->text($rTot, $y, 'Total', 6.5, true, $muted, 'R');
+            $pdf->text($rA, $y, $nA, 6.5, true, $muted, 'R');
+            $pdf->text($rB, $y, $nB, 6.5, true, $muted, 'R');
         } else {
-            $pdf->text($rTot, $y, 'À', 7.5, true, $muted, 'R');
-            $pdf->text($rB, $y, 'Montant', 7.5, true, $muted, 'R');
+            $pdf->text($xPay, $y, 'De', 6.5, true, $muted);
+            $pdf->text($rTot, $y, 'À', 6.5, true, $muted, 'R');
+            $pdf->text($rB, $y, 'Montant', 6.5, true, $muted, 'R');
         }
-        $y += 6;
-        $pdf->rect($L, $y, $R - $L, .8, $line);
-        $y += 15;
+        $y += 5;
+        $pdf->rect($L, $y, $R - $L, .7, $line);
+        $y += 12;
     };
 
-    $first = true;
     foreach ($groups as $title => $test) {
         $rows = array_values(array_filter($s['rows'], $test));
         if (!$rows) continue;
         $pay = $title === 'Paiements';
-        if ($first) {
-            $newPage();
-            $pdf->text($L, $y - 6, 'Le détail', 16, true, $ink);
-            $y += 22;
-            $first = false;
-        } elseif ($y > $bottom - 80) {
-            $newPage();
-        }
+        if ($y > $bottom - 50) $newPage();
         $tableHead($title, $pay);
         $sum = ['t' => 0, 'a' => 0, 'b' => 0];
         foreach ($rows as $i => $e) {
-            if ($y > $bottom - 10) {
+            $cs = $comments[(int)$e['id']] ?? [];
+            $need = $rh + count($cs) * 11;
+            if ($y + $need > $bottom) {
                 $newPage();
                 $tableHead($title . ' (suite)', $pay);
             }
-            if ($i % 2 === 1) $pdf->rect($L, $y - 12, $R - $L, 19, $paper);
+            if ($i % 2 === 1) $pdf->rect($L, $y - 10, $R - $L, $need, $paper);
             $who = (int)$e['paid_by'];
-            $pdf->circle($xPay + 6, $y - 3, 6, $col($who));
-            $pdf->text($xPay + 6, $y, mb_substr(user_name($who), 0, 1), 7, true, $white, 'C');
+            $pdf->circle($xPay + 5, $y - 2.8, 5, $col($who));
+            $pdf->text($xPay + 5, $y, mb_substr(user_name($who), 0, 1), 6, true, $white, 'C');
             if ($pay) {
-                $pdf->text($L + 8, $y, fdate($e['op_date']), 9, false, $ink);
-                $pdf->text($xPay + 17, $y, user_name($who), 9, false, $ink);
-                $pdf->text($rTot, $y, user_name((int)$e['beneficiary']), 9, false, $ink, 'R');
-                $pdf->text($rB, $y, money((int)$e['amount_cents']), 9, true, $ink, 'R');
+                $pdf->text($L + 6, $y, fdate($e['op_date']), $fs, false, $ink);
+                $pdf->text($xPay + 14, $y, user_name($who), $fs, false, $ink);
+                $pdf->text($rTot, $y, user_name((int)$e['beneficiary']), $fs, false, $ink, 'R');
+                $pdf->text($rB, $y, money((int)$e['amount_cents']), $fs, true, $ink, 'R');
             } else {
                 $ls = line_shares($e);
                 $lab = $e['label'] . ($ls['litige'] ? ' (contestée)' : '');
-                $pdf->text($L + 8, $y, $pdf->fit($lab, $xPay - $L - 16, 9), 9, false, $ink);
-                $pdf->text($xPay + 17, $y, $pdf->fit(user_name($who), $xRule - $xPay - 22, 9), 9, false, $muted);
-                $pdf->text($xRule, $y, $pdf->fit(split_label($e), $rTot - $xRule - 52, 8.5), 8.5, false, $muted);
-                $pdf->text($rTot, $y, money((int)$e['amount_cents']), 9, false, $ink, 'R');
-                $pdf->text($rA, $y, money($ls['a']), 9, true, $cA, 'R');
-                $pdf->text($rB, $y, money($ls['b']), 9, true, $cB, 'R');
+                $pdf->text($L + 6, $y, $pdf->fit($lab, $xPay - $L - 12, $fs), $fs, false, $ink);
+                $pdf->text($xPay + 14, $y, $pdf->fit(user_name($who), $xRule - $xPay - 18, $fs), $fs, false, $muted);
+                $pdf->text($xRule, $y, $pdf->fit(split_label($e), $rTot - $xRule - 48, 7.5), 7.5, false, $muted);
+                $pdf->text($rTot, $y, money((int)$e['amount_cents']), $fs, false, $ink, 'R');
+                $pdf->text($rA, $y, money($ls['a']), $fs, true, $cA, 'R');
+                $pdf->text($rB, $y, money($ls['b']), $fs, true, $cB, 'R');
                 $sum['t'] += (int)$e['amount_cents'];
                 $sum['a'] += $ls['a'];
                 $sum['b'] += $ls['b'];
             }
-            $y += 19;
+            foreach ($cs as $c) {
+                $y += 11;
+                $txt = '« ' . str_replace(["\r", "\n"], ' ', $c['body']) . ' » ' . user_name((int)$c['user_id']) . ', ' . fdate($c['created_at']);
+                $pdf->text($L + 14, $y, $pdf->fit($txt, $R - $L - 20, 7), 7, false, $muted);
+            }
+            $y += $rh;
         }
         if (!$pay && count($rows) > 1) {
-            $pdf->rect($L, $y - 12, $R - $L, .8, $line);
+            $pdf->rect($L, $y - 9, $R - $L, .7, $line);
+            $y += 2;
+            $pdf->text($L + 6, $y, 'Total', $fs, true, $ink);
+            $pdf->text($rTot, $y, money($sum['t']), $fs, true, $ink, 'R');
+            $pdf->text($rA, $y, money($sum['a']), $fs, true, $cA, 'R');
+            $pdf->text($rB, $y, money($sum['b']), $fs, true, $cB, 'R');
             $y += 4;
-            $pdf->text($L + 8, $y, 'Total', 9, true, $ink);
-            $pdf->text($rTot, $y, money($sum['t']), 9, true, $ink, 'R');
-            $pdf->text($rA, $y, money($sum['a']), 9, true, $cA, 'R');
-            $pdf->text($rB, $y, money($sum['b']), 9, true, $cB, 'R');
-            $y += 8;
         }
-        $y += 26;
+        $y += 18;
     }
 
-    // Pied de page
-    $pdf->eachPage(function (MiniPdf $p, int $i, int $n) use ($L, $R, $muted, $line, $m) {
-        $p->rect($L, MiniPdf::H - 46, $R - $L, .6, $line);
-        $p->text($L, MiniPdf::H - 32, 'Chaque montant et chaque modification sont inscrits dans le journal de l\'appli Les bons comptes.', 7.5, false, $muted);
-        $p->text($R, MiniPdf::H - 32, 'Page ' . $i . '/' . $n, 7.5, false, $muted, 'R');
+    $pdf->eachPage(function (MiniPdf $p, int $i, int $n) use ($L, $R, $muted, $line) {
+        $p->rect($L, MiniPdf::H - 36, $R - $L, .5, $line);
+        $p->text($L, MiniPdf::H - 24, 'Chaque montant et chaque modification sont inscrits dans le journal de l\'appli Les bons comptes.', 6.5, false, $muted);
+        if ($n > 1) $p->text($R, MiniPdf::H - 24, 'Page ' . $i . '/' . $n, 6.5, false, $muted, 'R');
     });
     return $pdf->output();
 }
