@@ -5,7 +5,7 @@ require __DIR__ . '/lib/bootstrap.php';
 
 $routes = [
     'login', 'logout', 'setup', 'dashboard', 'entries', 'entry', 'new', 'transfer',
-    'statement', 'export', 'audit', 'account', 'file',
+    'statement', 'recap', 'export', 'audit', 'account', 'file',
     'settings', 'recurring', 'users',
 ];
 $page = (string)($_GET['p'] ?? 'dashboard');

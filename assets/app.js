@@ -144,6 +144,18 @@
     });
   });
 
+  // Formulaire : dépense ou argent perçu
+  document.querySelectorAll('.type-seg input[name=type]').forEach(function (r) {
+    r.addEventListener('change', function () {
+      var rec = r.value === 'recette';
+      var form = r.closest('form');
+      var lbl = form.querySelector('[data-rec]');
+      if (lbl) lbl.textContent = rec ? lbl.getAttribute('data-rec') : lbl.getAttribute('data-dep');
+      var hint = form.querySelector('.type-hint');
+      if (hint) hint.hidden = !rec;
+    });
+  });
+
   // Impression du relevé
   document.querySelectorAll('[data-print]').forEach(function (b) {
     b.addEventListener('click', function () { window.print(); });

@@ -155,11 +155,8 @@ $last = date('Y-m-t', strtotime($first));
 $prev = date('Y-m', strtotime($first . ' -1 month'));
 $next = date('Y-m', strtotime($first . ' +1 month'));
 
-$rows = q("SELECT * FROM entries WHERE cancelled = 0 AND (
-               (op_date BETWEEN ? AND ? AND NOT (kind = 'remboursement' AND period IS NOT NULL AND period <> ?))
-               OR (kind = 'remboursement' AND period = ?))
-           ORDER BY CASE WHEN kind = 'remboursement' THEN 2 WHEN recurring_id IS NULL THEN 1 ELSE 0 END,
-                    CASE WHEN part_a_bp IN (0, 10000) THEN 1 ELSE 0 END, op_date, label, id", [$first, $last, $m, $m])->fetchAll();
+$summary = month_summary($m);
+$rows = $summary['rows'];
 $mb = balance('all', $last, $first);
 $global = balance('all');
 $ib = income_bp();
@@ -200,32 +197,9 @@ foreach ($rows as $e) {
     $owedA += $oa;
     $owedB += $ob;
 }
-// Dû pour le mois (dépenses) puis paiements effectués. Positif = Florian doit à Julie.
-$du = 0;
-$paid = 0;
-$payments = [];
-foreach ($rows as $e) {
-    if ($e['kind'] === 'depense') {
-        [$oa, $ob] = line_owed($e);
-        $du += $oa - $ob;
-    } else {
-        $paid += (int)$e['paid_by'] === $A ? (int)$e['amount_cents'] : -(int)$e['amount_cents'];
-        $payments[] = $e;
-    }
-}
-$carry = carry_before($m);
-$rest = $carry + $du - $paid;
-$base = $carry + $du;
-$trop = $rest !== 0 && ($base === 0 || ($rest > 0) !== ($base > 0));
-if ($trop && $m < CARRY_START) {
-    // Le trop perçu des mois d'avant le report n'est plus affiché
-    $rest = 0;
-    $trop = false;
-}
+['du' => $du, 'paid' => $paid, 'carry' => $carry, 'rest' => $rest, 'trop' => $trop, 'debtor' => $debtor, 'creditor' => $creditor] = $summary;
 $owedA += max($carry, 0);
 $owedB += max(-$carry, 0);
-$debtor = $rest > 0 ? $A : $B;
-$creditor = $rest > 0 ? $B : $A;
 $otherTodo = (int)q("SELECT COUNT(*) FROM entries WHERE cancelled = 0 AND $myCol = 0 AND substr(op_date, 1, 7) <> ?", [$m])->fetchColumn();
 $litigeTotal = $mb['litige'][$A] + $mb['litige'][$B];
 
@@ -267,7 +241,7 @@ $line = function (array $e, bool $todo) use ($uid, $A, $nameA, $nameB, $comments
         </span>
         <span class="line-amt">
           <?php if ($mine !== null): ?>
-            <span class="my-label">Ta part</span>
+            <span class="my-label"><?= !empty($e['recette']) ? 'Pour toi' : 'Ta part' ?></span>
             <span class="my-part"><?= money($mine) ?></span>
             <span class="line-total">sur <?= money((int)$e['amount_cents']) ?></span>
           <?php else: ?>
@@ -301,7 +275,7 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
     <?php endif; ?>
   </p>
   <p class="hero-amount"><?= money(abs($rest)) ?></p>
-  <p class="hero-note"><?php if ($carry): ?>Report du mois d'avant : <?= h(user_name($carry > 0 ? $A : $B)) ?> doit <?= money(abs($carry)) ?><br><?php endif; ?>Dû pour le mois <?= money(abs($du)) ?> · déjà payé <?= money(abs($paid)) ?><?= $litigeTotal ? ' · ' . money($litigeTotal) . ' en litige' : '' ?></p>
+  <p class="hero-note"><?php if ($carry): ?>Report du mois d'avant : <?= h(user_name($carry > 0 ? $A : $B)) ?> doit <?= money(abs($carry)) ?><br><?php endif; ?>Dû pour le mois : <?= $du === 0 ? 'rien' : h(user_name($du > 0 ? $A : $B)) . ' doit ' . money(abs($du)) ?><?php foreach ($summary['payments'] as $py): ?><br>Paiement : <?= h(user_name((int)$py['paid_by'])) ?> a versé <?= money((int)$py['amount_cents']) ?> à <?= h(user_name((int)$py['beneficiary'])) ?><?php endforeach; ?><?= $litigeTotal ? ' · ' . money($litigeTotal) . ' en litige' : '' ?></p>
   <div class="hero-actions">
     <a class="btn" href="<?= url('new') ?>">+ Dépense</a>
     <button type="button" class="btn btn-ghost" data-open="pay-dialog">Paiement reçu ou versé</button>
@@ -313,6 +287,7 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
   <form method="post" class="form pay-form">
     <?= csrf_field() ?><input type="hidden" name="action" value="pay"><input type="hidden" name="id" value="0">
     <h2>Paiement · <?= h(month_label($m)) ?></h2>
+    <p class="hint">Argent réellement versé de l'un à l'autre (virement, chèque, espèces). Pour la CAF ou une autre aide touchée par l'un de vous, utilise plutôt « + Dépense », puis « Argent perçu ».</p>
     <div class="field"><span class="lbl">Qui a payé ?</span>
       <div class="seg">
         <?php foreach ([$A, $B] as $who): ?>
@@ -512,5 +487,23 @@ layout_start(ucfirst(month_label($m)), 'dashboard');
     <p class="muted small-txt">Au prorata (<?= pct($ib) ?> / <?= pct(10000 - $ib) ?>, art. 371-2 du Code civil), <?= h($ov >= 0 ? $nameA : $nameB) ?> prend en charge <strong><?= money(abs($ov)) ?></strong> de plus ce mois-ci, et <strong><?= money(abs($global['over'][$A])) ?></strong> depuis le début (<?= h($global['over'][$A] >= 0 ? $nameA : $nameB) ?>).</p>
   <?php endif; ?>
 </details>
-<p class="center"><a href="<?= url('statement', ['from' => $first, 'to' => $last]) ?>">Relevé PDF du mois</a></p>
+<?php if (is_admin()):
+    $recapTo = (string)setting('recap_to', '');
+    $recapSent = setting('recap_sent_' . $m);
+    $nbTodo = count($todoRows); ?>
+<section class="card recap">
+  <h2>Récap de <?= h(month_label($m)) ?></h2>
+  <?php if ($recapSent): ?><p class="muted small-txt">Envoyé le <?= fdate($recapSent, true) ?></p><?php endif; ?>
+  <div class="recap-actions">
+    <a class="btn btn-ghost" href="<?= url('recap', ['m' => $m]) ?>" target="_blank" rel="noopener">Voir le PDF</a>
+    <?php if ($recapTo !== ''): ?>
+      <form method="post" action="<?= url('recap', ['m' => $m]) ?>" data-confirm="Envoyer le récap de <?= h(month_label($m)) ?> à <?= h($recapTo) ?> ?<?= $nbTodo ? ' Attention : ' . $nbTodo . ' ligne(s) ne sont pas encore validées.' : '' ?>">
+        <?= csrf_field() ?><button class="btn"><?= $recapSent ? 'Renvoyer' : 'Envoyer à ' . h($nameB) ?></button>
+      </form>
+    <?php else: ?>
+      <a class="btn" href="<?= url('settings') ?>">Renseigner l'adresse</a>
+    <?php endif; ?>
+  </div>
+</section>
+<?php endif; ?>
 <?php layout_end();

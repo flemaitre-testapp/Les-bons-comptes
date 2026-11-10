@@ -41,6 +41,16 @@ if (is_post()) {
             }
             flash('ok', 'Réglages enregistrés. Le mois en cours est recalculé, les mois passés gardent leur calcul.');
         }
+    } elseif ($action === 'recap') {
+        $to = post('recap_to');
+        $cc = post('recap_cc');
+        if (($to !== '' && !filter_var($to, FILTER_VALIDATE_EMAIL)) || ($cc !== '' && !filter_var($cc, FILTER_VALIDATE_EMAIL))) {
+            flash('err', 'Adresse mail invalide.');
+        } else {
+            set_setting('recap_to', $to);
+            set_setting('recap_cc', $cc);
+            flash('ok', 'Adresses du récap enregistrées.');
+        }
     } elseif ($action === 'cat_add') {
         $name = post('name');
         if ($name === '' || mb_strlen($name) > 60) {
@@ -91,6 +101,15 @@ layout_start('Admin', 'admin');
     <?php endif; ?>
     <label>Règle de base : part de <?= h($A['display_name']) ?> (%) <input name="base" value="<?= h(str_replace('.', ',', (string)(base_bp() / 100))) ?>" inputmode="decimal" required></label>
     <p class="hint">Règle actuelle : <?= h($A['display_name']) ?> <?= pct(base_bp()) ?>, <?= h($B['display_name']) ?> <?= pct(10000 - base_bp()) ?>. Proposée par défaut pour chaque dépense. L'appli calcule en parallèle la part de chacun selon les revenus. Un changement recalcule le mois en cours (les mois passés ne bougent pas) et est inscrit au journal.</p>
+    <button class="btn small">Enregistrer</button>
+  </form>
+</section>
+<section class="card">
+  <h2>Récap mensuel par mail</h2>
+  <form method="post" class="form">
+    <?= csrf_field() ?><input type="hidden" name="action" value="recap">
+    <label>Envoyer à <?= h($B['display_name']) ?> <input type="email" name="recap_to" value="<?= h(setting('recap_to', '')) ?>"></label>
+    <label>Copie et réponses à <?= h($A['display_name']) ?> <input type="email" name="recap_cc" value="<?= h(setting('recap_cc', '')) ?>"></label>
     <button class="btn small">Enregistrer</button>
   </form>
 </section>

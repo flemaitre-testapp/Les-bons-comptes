@@ -422,3 +422,8 @@ details.fold-calc[open] summary { margin-bottom: .5rem; }
 /* Annulation rapide après validation */
 .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 50; display: flex; gap: 1rem; align-items: center; background: var(--ink); color: var(--bg); padding: .6rem 1rem; border-radius: 999px; font-size: .9rem; box-shadow: 0 6px 18px rgba(0,0,0,.25); white-space: nowrap; }
 .toast button { all: unset; cursor: pointer; font-weight: 700; text-decoration: underline; }
+
+/* Récap mensuel */
+.recap-actions { display: flex; gap: .6rem; flex-wrap: wrap; }
+.recap-actions form { margin: 0; }
+.type-seg { margin-bottom: .2rem; }

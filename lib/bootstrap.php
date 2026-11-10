@@ -37,6 +37,7 @@ require __DIR__ . '/db.php';
 require __DIR__ . '/helpers.php';
 require __DIR__ . '/audit.php';
 require __DIR__ . '/ledger.php';
+require __DIR__ . '/pdf.php';
 require __DIR__ . '/auth.php';
 require __DIR__ . '/view.php';
 

@@ -404,6 +404,7 @@ function generate_recurring(string $period): int
             'notes' => 'Charge mensuelle ' . month_label($period),
             'recurring_id' => (int)$r['id'],
             'period' => $period,
+            'recette' => (int)($r['recette'] ?? 0),
         ]);
     }
     audit('recurring.generate', null, null, ['mois' => month_label($period), 'nombre' => count($todo)]);
@@ -611,6 +612,49 @@ function carry_before(string $ym): int
         $carry += $oa - $ob;
     }
     return $carry;
+}
+
+/** Lignes d'un mois, paiements rattachés compris. */
+function month_rows(string $m): array
+{
+    $first = $m . '-01';
+    $last = date('Y-m-t', strtotime($first));
+    return q("SELECT * FROM entries WHERE cancelled = 0 AND (
+               (op_date BETWEEN ? AND ? AND NOT (kind = 'remboursement' AND period IS NOT NULL AND period <> ?))
+               OR (kind = 'remboursement' AND period = ?))
+           ORDER BY CASE WHEN kind = 'remboursement' THEN 2 WHEN recurring_id IS NULL THEN 1 ELSE 0 END,
+                    CASE WHEN part_a_bp IN (0, 10000) THEN 1 ELSE 0 END, op_date, label, id", [$first, $last, $m, $m])->fetchAll();
+}
+
+/** Bilan d'un mois : dû, paiements, report, reste. Positif = A doit à B. */
+function month_summary(string $m): array
+{
+    $A = party_a_id();
+    $B = other_party($A);
+    $rows = month_rows($m);
+    $du = 0;
+    $paid = 0;
+    $payments = [];
+    foreach ($rows as $e) {
+        if ($e['kind'] === 'depense') {
+            [$oa, $ob] = line_owed($e);
+            $du += $oa - $ob;
+        } else {
+            $paid += (int)$e['paid_by'] === $A ? (int)$e['amount_cents'] : -(int)$e['amount_cents'];
+            $payments[] = $e;
+        }
+    }
+    $carry = carry_before($m);
+    $rest = $carry + $du - $paid;
+    $base = $carry + $du;
+    $trop = $rest !== 0 && ($base === 0 || ($rest > 0) !== ($base > 0));
+    if ($trop && $m < CARRY_START) {
+        // Le trop perçu des mois d'avant le report n'est plus affiché
+        $rest = 0;
+        $trop = false;
+    }
+    return ['rows' => $rows, 'du' => $du, 'paid' => $paid, 'payments' => $payments, 'carry' => $carry, 'rest' => $rest, 'trop' => $trop,
+        'debtor' => $rest > 0 ? $A : $B, 'creditor' => $rest > 0 ? $B : $A];
 }
 
 /** Empêche une charge fixe retirée d'un mois d'y être recréée automatiquement. */

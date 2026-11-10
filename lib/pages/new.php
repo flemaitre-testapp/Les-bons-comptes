@@ -22,6 +22,7 @@ $f = [
     'part_a' => $replace ? str_replace('.', ',', (string)($replace['part_a_bp'] / 100)) : '',
     'notes' => $replace['notes'] ?? '',
     'reason' => '',
+    'type' => !empty($replace['recette']) ? 'recette' : 'depense',
 ];
 $errors = [];
 
@@ -38,7 +39,8 @@ if (is_post()) {
     if ($f['label'] === '' || mb_strlen($f['label']) > 120) $errors[] = 'Libellé obligatoire (120 caractères max).';
     if (!$amount) $errors[] = 'Montant invalide.';
     if ($bp === null) $errors[] = 'Répartition invalide.';
-    if (!in_array($payer, [(int)$A['id'], (int)$B['id']], true)) $errors[] = 'Indique qui a payé.';
+    $isRec = $f['type'] === 'recette';
+    if (!in_array($payer, [(int)$A['id'], (int)$B['id']], true)) $errors[] = $isRec ? 'Indique qui a perçu l\'argent.' : 'Indique qui a payé.';
     if ($cat && !q('SELECT 1 FROM categories WHERE id = ?', [$cat])->fetchColumn()) $errors[] = 'Catégorie inconnue.';
     if ($replace && $f['reason'] === '') $errors[] = 'Indique la raison de la correction.';
     if (mb_strlen($f['notes']) > 2000) $errors[] = 'Note trop longue.';
@@ -60,8 +62,8 @@ if (is_post()) {
         $recId = null;
         if (!$replace && post('monthly') === '1') {
             $mode = $bp === 5000 ? 'half' : 'custom';
-            q('INSERT INTO recurring(label, category_id, amount_cents, paid_by, mode, part_a_bp, day_of_month, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)',
-                [$f['label'], $cat, $amount, $payer, $mode, $bp, min(28, (int)substr($f['op_date'], 8, 2)), now()]);
+            q('INSERT INTO recurring(label, category_id, amount_cents, paid_by, mode, part_a_bp, day_of_month, created_at, recette) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [$f['label'], $cat, $amount, $payer, $mode, $bp, min(28, (int)substr($f['op_date'], 8, 2)), now(), $isRec ? 1 : 0]);
             $recId = (int)db()->lastInsertId();
             audit('recurring.create', 'recurring', $recId, ['libelle' => $f['label'], 'montant' => money($amount), 'payeur' => user_name($payer), 'repartition' => rec_label($mode, $bp)]);
         }
@@ -72,6 +74,7 @@ if (is_post()) {
             'receipt' => $receipt[0] ?? null, 'receipt_name' => $receipt[1] ?? null, 'receipt_sha' => $receipt[2] ?? null,
             'replaces' => $replace ? (int)$replace['id'] : null,
             'recurring_id' => $recId, 'period' => $recId ? substr($f['op_date'], 0, 7) : null,
+            'recette' => $isRec ? 1 : 0,
         ]);
         if ($replace) {
             $reason = 'Corrigée par l\'opération #' . $id . ' : ' . $f['reason'];
@@ -80,7 +83,7 @@ if (is_post()) {
             audit('entry.cancel', 'entry', (int)$replace['id'], ['raison' => $reason, 'remplacee_par' => $id]);
         }
         db()->commit();
-        flash('ok', 'Dépense enregistrée.');
+        flash('ok', $isRec ? 'Rentrée d\'argent enregistrée.' : 'Dépense enregistrée.');
         header('Location: ' . url('dashboard', ['m' => substr($f['op_date'], 0, 7)]));
         exit;
     }
@@ -97,13 +100,18 @@ layout_start($replace ? 'Corriger une dépense' : 'Nouvelle dépense', 'new');
   <form method="post" enctype="multipart/form-data" class="form" id="dep-form"
         data-a="<?= h($A['display_name']) ?>" data-b="<?= h($B['display_name']) ?>">
     <?= csrf_field() ?>
+    <div class="seg type-seg">
+      <label><input type="radio" name="type" value="depense" <?= $f['type'] !== 'recette' ? 'checked' : '' ?>><span>Dépense</span></label>
+      <label><input type="radio" name="type" value="recette" <?= $f['type'] === 'recette' ? 'checked' : '' ?>><span>Argent perçu (CAF...)</span></label>
+    </div>
+    <p class="hint type-hint" data-for="recette"<?= $f['type'] === 'recette' ? '' : ' hidden' ?>>Argent touché par l'un de vous et à partager, par exemple la CAF. La part de l'autre est déduite de ce qu'il doit.</p>
     <label>Quoi ? <input name="label" value="<?= h($f['label']) ?>" maxlength="120" placeholder="Ex. Cantine, chaussures, nounou..." required></label>
     <div class="row2">
       <label>Montant (€) <input name="amount" id="amount" value="<?= h($f['amount']) ?>" inputmode="decimal" placeholder="0,00" required></label>
       <label>Date <input type="date" name="op_date" value="<?= h($f['op_date']) ?>" required></label>
     </div>
     <div class="field">
-      <span class="lbl">Qui a payé ?</span>
+      <span class="lbl" data-dep="Qui a payé ?" data-rec="Qui a perçu l'argent ?"><?= $f['type'] === 'recette' ? 'Qui a perçu l\'argent ?' : 'Qui a payé ?' ?></span>
       <div class="seg">
         <?php foreach ([$A, $B] as $u): ?>
           <label><input type="radio" name="paid_by" value="<?= (int)$u['id'] ?>" <?= $f['paid_by'] === (string)$u['id'] ? 'checked' : '' ?>><span><?= h($u['display_name']) ?></span></label>
