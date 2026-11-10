@@ -190,13 +190,28 @@ function recap_family(array $e): array
     return array_values(array_unique($ids));
 }
 
-/** Le dernier commentaire écrit sur une ligne, toutes versions confondues. */
+/** Le dernier texte écrit sur une ligne, toutes versions confondues : commentaire, motif d'une proposition, d'une contestation ou d'une correction. */
 function recap_notes_for(array $ids, ?array $e = null): array
 {
     $in = implode(',', array_map('intval', $ids)) ?: '0';
-    $c = q("SELECT * FROM comments WHERE entry_id IN ($in) ORDER BY created_at DESC, id DESC LIMIT 1")->fetch();
-    if (!$c) return [];
-    return ['› ' . user_name((int)$c['user_id']) . ', ' . fdate($c['created_at']) . ' : ' . preg_replace('/\s+/u', ' ', $c['body'])];
+    $items = [];
+    foreach (q("SELECT * FROM comments WHERE entry_id IN ($in)") as $c) {
+        $items[] = [$c['created_at'], (int)$c['user_id'], $c['body']];
+    }
+    foreach (q("SELECT * FROM proposals WHERE entry_id IN ($in)") as $p) {
+        if (trim((string)$p['reason']) !== '') $items[] = [$p['created_at'], (int)$p['user_id'], $p['reason']];
+        if (trim((string)$p['decision_note']) !== '' && $p['decided_at']) $items[] = [$p['decided_at'], (int)$p['decided_by'], $p['decision_note']];
+    }
+    foreach (q("SELECT * FROM audit_log WHERE entity = 'entry' AND entity_id IN ($in) AND action IN ('entry.contest', 'entry.cancel', 'proposal.refuse')") as $a) {
+        $d = json_decode((string)$a['details'], true) ?: [];
+        $t = trim((string)($d['motif'] ?? $d['raison'] ?? ''));
+        if ($t === '' || $t === 'Correction' || str_starts_with($t, 'Corrigée par') || str_contains($t, 'charge retirée')) continue;
+        $items[] = [$a['ts'], (int)$a['user_id'], $t];
+    }
+    if (!$items) return [];
+    usort($items, fn($x, $y) => strcmp((string)$y[0], (string)$x[0]));
+    [$when, $uid, $body] = $items[0];
+    return ['› ' . user_name($uid) . ', ' . fdate($when) . ' : ' . preg_replace('/\s+/u', ' ', $body)];
 }
 
 function recap_notes(array $rows): array
