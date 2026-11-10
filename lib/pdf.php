@@ -55,6 +55,24 @@ class MiniPdf
         return rtrim($s) . '...';
     }
 
+    /** Découpe un texte en lignes qui tiennent dans une largeur. */
+    public function wrap(string $s, float $max, float $size, bool $bold = false): array
+    {
+        $out = [];
+        $cur = '';
+        foreach (preg_split('/\s+/u', trim($s)) as $w) {
+            $try = $cur === '' ? $w : $cur . ' ' . $w;
+            if ($cur !== '' && $this->width($try, $size, $bold) > $max) {
+                $out[] = $cur;
+                $cur = $w;
+            } else {
+                $cur = $try;
+            }
+        }
+        if ($cur !== '') $out[] = $this->fit($cur, $max, $size, $bold);
+        return $out ?: [''];
+    }
+
     /** $y part du haut de la page. $align : L ou R (x = bord droit). */
     public function text(float $x, float $y, string $s, float $size = 10, bool $bold = false, array $rgb = [0, 0, 0], string $align = 'L'): void
     {
@@ -150,6 +168,41 @@ class MiniPdf
     }
 }
 
+/** Tout ce qui a été écrit sur chaque ligne : commentaires (versions précédentes comprises), contestations, propositions. */
+function recap_notes(array $rows): array
+{
+    $notes = [];
+    foreach ($rows as $e) {
+        $id = (int)$e['id'];
+        $chain = [$id];
+        $prev = $e['replaces'] ?? null;
+        $guard = 0;
+        while ($prev && $guard++ < 20) {
+            $chain[] = (int)$prev;
+            $prev = q('SELECT replaces FROM entries WHERE id = ?', [$prev])->fetchColumn();
+        }
+        $in = implode(',', $chain);
+        $items = [];
+        foreach (q("SELECT * FROM comments WHERE entry_id IN ($in)") as $c) {
+            $items[] = [$c['created_at'], user_name((int)$c['user_id']) . ', ' . fdate($c['created_at']) . ' : ' . $c['body']];
+        }
+        foreach (q("SELECT * FROM proposals WHERE entry_id IN ($in)") as $p) {
+            $st = ['en_attente' => 'en attente', 'acceptee' => 'acceptée', 'refusee' => 'refusée', 'retiree' => 'retirée'][$p['status']] ?? $p['status'];
+            $t = user_name((int)$p['user_id']) . ', ' . fdate($p['created_at']) . ' : propose ' . money((int)$p['amount_cents']) . ' (' . $st . '). ' . $p['reason'];
+            if ($p['decision_note']) $t .= ' Réponse : ' . $p['decision_note'];
+            $items[] = [$p['created_at'], $t];
+        }
+        foreach (q("SELECT * FROM audit_log WHERE entity = 'entry' AND entity_id IN ($in) AND action = 'entry.contest' ORDER BY id") as $a) {
+            $d = json_decode((string)$a['details'], true) ?: [];
+            $items[] = [$a['ts'], user_name((int)$a['user_id']) . ', ' . fdate($a['ts']) . ' : conteste' . (!empty($d['motif']) ? ', ' . $d['motif'] : '')];
+        }
+        if (!$items) continue;
+        usort($items, fn($x, $y) => strcmp((string)$x[0], (string)$y[0]));
+        $notes[$id] = array_map(fn($i) => '› ' . str_replace(["\r", "\n"], ' ', $i[1]), $items);
+    }
+    return $notes;
+}
+
 /** Lignes « activités et placements » des enfants : catégorie ou libellé. */
 function is_kids_line(array $e, array $catNames): bool
 {
@@ -181,11 +234,7 @@ function recap_pdf(string $m): string
     foreach (q('SELECT id, name FROM categories') as $c) {
         $catNames[(int)$c['id']] = $c['name'];
     }
-    $comments = [];
-    $ids = implode(',', array_map(fn($e) => (int)$e['id'], $s['rows'])) ?: '0';
-    foreach (q("SELECT * FROM comments WHERE entry_id IN ($ids) ORDER BY id") as $c) {
-        $comments[(int)$c['entry_id']][] = $c;
-    }
+    $notes = recap_notes($s['rows']);
 
     $pdf = new MiniPdf();
     $L = 36.0;
@@ -365,8 +414,13 @@ function recap_pdf(string $m): string
         $tableHead($title, $pay);
         $sum = ['t' => 0, 'a' => 0, 'b' => 0];
         foreach ($rows as $i => $e) {
-            $cs = $comments[(int)$e['id']] ?? [];
-            $need = $rh + count($cs) * 11;
+            $cs = [];
+            foreach ($notes[(int)$e['id']] ?? [] as $t) {
+                foreach ($pdf->wrap($t, $R - $L - 24, 7) as $part) {
+                    $cs[] = $part;
+                }
+            }
+            $need = $rh + count($cs) * 10;
             if ($y + $need > $bottom) {
                 $newPage();
                 $tableHead($title . ' (suite)', $pay);
@@ -393,10 +447,9 @@ function recap_pdf(string $m): string
                 $sum['a'] += $ls['a'];
                 $sum['b'] += $ls['b'];
             }
-            foreach ($cs as $c) {
-                $y += 11;
-                $txt = '« ' . str_replace(["\r", "\n"], ' ', $c['body']) . ' » ' . user_name((int)$c['user_id']) . ', ' . fdate($c['created_at']);
-                $pdf->text($L + 14, $y, $pdf->fit($txt, $R - $L - 20, 7), 7, false, $muted);
+            foreach ($cs as $part) {
+                $y += 10;
+                $pdf->text($L + 14, $y, $part, 7, false, $ink);
             }
             $y += $rh;
         }
